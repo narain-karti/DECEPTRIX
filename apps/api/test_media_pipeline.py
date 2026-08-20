@@ -22,7 +22,7 @@ async def test_media_pipeline():
     db.commit()
 
     print(f"Running media audit on job {job_id}...")
-    await process_media_job(job_id, db)
+    process_media_job(job_id)
 
     db.refresh(job)
     print("Test Completed!")

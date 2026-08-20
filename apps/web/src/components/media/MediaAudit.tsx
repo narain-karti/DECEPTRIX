@@ -266,19 +266,34 @@ export default function MediaAudit() {
               </span>
             </div>
             
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontFamily: "monospace", fontSize: "11px", color: "#a5d6ff", height: "60px", overflow: "hidden" }}>
-              <div style={{ opacity: 0.4 }}>[sys] init workers pool (4 threads)</div>
-              <div style={{ opacity: 0.6 }}>[gpu] alloc tensor mem size=1.4GB</div>
-              <div style={{ opacity: 0.8 }}>[model] load weights 'videomae-v2' (fp16)</div>
-              <div style={{ 
-                opacity: 1,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                borderRight: "2px solid #a5d6ff",
-                animation: "typing 2s steps(40, end), blink-caret .75s step-end infinite"
-              }}>
-                [task] {currentStep.toLowerCase()}...
-              </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontFamily: "monospace", fontSize: "11px", color: "#a5d6ff", height: "80px", overflow: "hidden", justifyContent: "flex-end" }}>
+              {(() => {
+                 // Dynamic terminal logic based on current progress
+                 const logs = [
+                   "[sys] Connecting to DECEPTRIX ML cluster...",
+                   "[sys] Initializing media analysis pipeline..."
+                 ];
+                 if (progress >= 10) logs.push(`[task] Initializing AI Models...`);
+                 if (progress >= 20) logs.push(`[task] Extracting video frames and audio...`);
+                 if (progress >= 40) logs.push(`[model] Loading visual models (MediaPipe, OpenCV DNN)...`);
+                 if (progress > 40 && progress < 80) logs.push(`[task] Analyzing spatio-temporal artifacts... (progress: ${Math.round(progress)}%)`);
+                 if (progress >= 80 && progress < 90) logs.push(`[task] Extracting audio embeddings & performing Lip Sync... (progress: ${Math.round(progress)}%)`);
+                 if (progress >= 90) logs.push(`[task] Fusing multi-modal confidence scores...`);
+                 if (progress >= 100) logs.push(`[sys] Analysis complete. Generating verdict.`);
+                 
+                 // Show the last 4 logs
+                 return logs.slice(-4).map((log, idx, arr) => (
+                   <div key={idx} style={{ 
+                     opacity: 0.4 + (idx / arr.length) * 0.6,
+                     whiteSpace: "nowrap",
+                     overflow: "hidden",
+                     textOverflow: "ellipsis",
+                     animation: idx === arr.length - 1 ? "typing 0.5s steps(40, end)" : "none"
+                   }}>
+                     {log}
+                   </div>
+                 ));
+              })()}
             </div>
           </div>
         </div>

@@ -11,6 +11,7 @@ class Job(Base):
     modality = Column(String) # "media" or "text"
     status = Column(String, default="pending") # pending, processing, completed, failed
     progress = Column(Integer, default=0)
+    current_step = Column(String, default="Initializing")
     
     # Media specific
     filename = Column(String, nullable=True)
