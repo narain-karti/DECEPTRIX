@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 const projects = [
   {
     icon: "🏛️",
@@ -37,45 +41,94 @@ const projects = [
   }
 ];
 
-export default function UseCases() {
-  return (
-    <section className="section-gap" id="portfolio">
-      <div className="container">
-        <div style={{ textAlign: "center", marginBottom: 64 }}>
-          <p className="section-label">FEATURED WORK / USE CASES</p>
-          <h2 className="h2">
-            Domain Applications<span className="text-orange">.</span>
-          </h2>
-        </div>
+const pastelClasses = [
+  "card-pastel-1", // cream
+  "card-pastel-5", // peach
+  "card-pastel-2", // lavender
+  "card-pastel-6", // yellow
+  "card-pastel-3", // blue
+  "card-pastel-7", // pink
+];
 
-        <div className="portfolio-grid">
-          {projects.map((project, i) => (
-            <div className="project-card" key={i}>
-              <div className="project-image" style={{ background: "var(--cream)" }}>
-                {project.icon}
-              </div>
-              <div className="project-content">
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, letterSpacing: "0.1em" }}>
-                    {project.category}
-                  </div>
-                  <h3 className="h4" style={{ marginBottom: 4 }}>{project.title}</h3>
-                  <p style={{ fontSize: 14, color: "rgba(32,33,31,0.7)" }}>{project.desc}</p>
-                </div>
-                <div className="btn-circular" style={{ flexShrink: 0, marginLeft: 16 }}>
-                  →
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        
-        <div style={{ textAlign: "center", marginTop: 48 }}>
-          <a href="#" className="btn-primary">
-            View All Domains <span className="btn-arrow">→</span>
-          </a>
+export default function UseCases() {
+  const [activeMenu, setActiveMenu] = useState<number | null>(null);
+
+  return (
+    <div>
+      <div className="section-header-row">
+        <div>
+          <span className="section-label">Featured Work</span>
+          <h2 className="section-header-title">Domain Applications</h2>
         </div>
       </div>
-    </section>
+      <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "24px", maxWidth: "600px" }}>
+        DECEPTRIX is deployed across diverse ecosystems to establish digital trust and analyze structural manipulation.
+      </p>
+
+      <div className="content-grid grid-4">
+        {projects.map((project, i) => (
+          <div className="content-card" key={i}>
+            {/* Zone 1: Pastel visual area */}
+            <div className={`content-card-visual ${pastelClasses[i % pastelClasses.length]}`}>
+              <span style={{ fontSize: "40px" }}>{project.icon}</span>
+              <div 
+                className="three-dot-menu" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenu(activeMenu === i ? null : i);
+                }}
+              >
+                ⋮
+              </div>
+              
+              {activeMenu === i && (
+                <div 
+                  style={{
+                    position: "absolute",
+                    top: "40px",
+                    right: "12px",
+                    backgroundColor: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "8px 0",
+                    boxShadow: "var(--shadow-popup)",
+                    zIndex: 10,
+                    width: "120px",
+                  }}
+                  onMouseLeave={() => setActiveMenu(null)}
+                >
+                  <div 
+                    style={{ padding: "6px 12px", fontSize: "12px", color: "var(--text-primary)", cursor: "pointer" }}
+                    onClick={() => alert(`Launching case study for ${project.title}`)}
+                  >
+                    Case Study
+                  </div>
+                  <div 
+                    style={{ padding: "6px 12px", fontSize: "12px", color: "var(--text-secondary)", cursor: "pointer" }}
+                    onClick={() => alert(`View API integration guide for ${project.title}`)}
+                  >
+                    API Docs
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Zone 2: Information area */}
+            <div className="content-card-info">
+              <div>
+                <h4 className="content-card-title">{project.title}</h4>
+                <p className="content-card-desc">{project.desc}</p>
+              </div>
+              <div className="content-card-meta">
+                <span style={{ color: "var(--accent)", fontSize: "10px", fontWeight: "700" }}>{project.category}</span>
+                <span style={{ cursor: "pointer", color: "var(--text-secondary)" }} onClick={() => alert(`View application: ${project.title}`)}>
+                  →
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

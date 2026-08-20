@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 const cards = [
   {
     icon: "🔬",
@@ -43,41 +47,103 @@ const cards = [
   },
 ];
 
+const pastelClasses = [
+  "card-pastel-3", // blue
+  "card-pastel-2", // lavender
+  "card-pastel-4", // green
+  "card-pastel-1", // cream
+  "card-pastel-5", // peach
+  "card-pastel-6", // yellow
+];
+
 export default function EvidenceCards() {
+  const [activeMenu, setActiveMenu] = useState<number | null>(null);
+
   return (
-    <section className="services-section" id="services">
-      <div className="section-label">SERVICES / EVIDENCE LAYERS</div>
-      <h2 className="h2" style={{ maxWidth: 600 }}>
-        What We Analyze.
-      </h2>
-      <p style={{ color: "rgba(255,255,255,0.6)", maxWidth: 600, marginTop: 12 }}>
+    <div>
+      <div className="section-header-row">
+        <div>
+          <span className="section-label">Analysis Layers</span>
+          <h2 className="section-header-title">Evidence Analysis Layers</h2>
+        </div>
+      </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "24px", maxWidth: "600px" }}>
         Each evidence type is analyzed independently and presented separately
         before any synthesis. No signal is hidden or averaged away.
       </p>
 
-      <div className="services-grid">
+      <div className="content-grid grid-4">
         {cards.map((card, i) => (
-          <div className="service-card" key={i}>
-            <div className="service-icon">{card.icon}</div>
-            <h4 className="service-title">{card.title}</h4>
-            <p className="service-desc">{card.desc}</p>
-            <div style={{ marginTop: "auto" }}>
-               {card.active ? (
-                 <span className="pill-outline" style={{ background: "rgba(255,255,255,0.1)", border: "none", color: "white" }}>
-                   Active
-                 </span>
-               ) : (
-                 <span className="pill-outline" style={{ background: "transparent", borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.5)" }}>
-                   Coming Soon
-                 </span>
-               )}
+          <div className="content-card" key={i}>
+            {/* Zone 1: Pastel visual area */}
+            <div className={`content-card-visual ${pastelClasses[i % pastelClasses.length]}`}>
+              <span style={{ fontSize: "40px" }}>{card.icon}</span>
+              <div 
+                className="three-dot-menu" 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenu(activeMenu === i ? null : i);
+                }}
+              >
+                ⋮
+              </div>
+              
+              {activeMenu === i && (
+                <div 
+                  style={{
+                    position: "absolute",
+                    top: "40px",
+                    right: "12px",
+                    backgroundColor: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "8px 0",
+                    boxShadow: "var(--shadow-popup)",
+                    zIndex: 10,
+                    width: "120px",
+                  }}
+                  onMouseLeave={() => setActiveMenu(null)}
+                >
+                  <div 
+                    style={{ padding: "6px 12px", fontSize: "12px", color: "var(--text-primary)", cursor: "pointer" }}
+                    onClick={() => alert(`Opening details for ${card.title}`)}
+                  >
+                    View Specs
+                  </div>
+                  <div 
+                    style={{ padding: "6px 12px", fontSize: "12px", color: "var(--text-secondary)", cursor: "pointer" }}
+                    onClick={() => alert(`API keys configuration for ${card.title}`)}
+                  >
+                    Config API
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ position: "absolute", bottom: 24, right: 24, opacity: 0.5 }}>
-              →
+
+            {/* Zone 2: Information area */}
+            <div className="content-card-info">
+              <div>
+                <h4 className="content-card-title">{card.title}</h4>
+                <p className="content-card-desc">{card.desc}</p>
+              </div>
+              <div className="content-card-meta">
+                <span>{card.status}</span>
+                {card.active ? (
+                  <span style={{ color: "#00d68f", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#00d68f" }} />
+                    Online
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--text-muted)" }} />
+                    Idle
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ))}
       </div>
-    </section>
+    </div>
   );
 }

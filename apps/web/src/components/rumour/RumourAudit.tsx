@@ -151,7 +151,7 @@ export default function RumourAudit() {
             onClick={handleExtract}
             style={{ opacity: text.trim().length < 10 ? 0.4 : 1 }}
           >
-            Extract Claims <span className="btn-arrow" style={{ background: "white", color: "var(--dark)" }}>→</span>
+            Extract Claims <span className="btn-arrow">→</span>
           </button>
         </div>
 
@@ -398,10 +398,10 @@ export default function RumourAudit() {
 
       {/* Actions */}
       <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button className="btn-primary">
-          Download Report <span className="btn-arrow" style={{ background: "white", color: "var(--dark)" }}>↓</span>
+        <button className="btn-primary" onClick={() => alert("Downloading HTML report...")}>
+          Download Report <span className="btn-arrow">↓</span>
         </button>
-        <button className="btn-secondary">Download JSON</button>
+        <button className="btn-secondary" onClick={() => alert("Downloading JSON...")}>Download JSON</button>
         <button className="btn-secondary" onClick={reset}>
           New Audit
         </button>
