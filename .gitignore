@@ -27,3 +27,10 @@ venv/
 env.bak/
 venv.bak/
 .DS_Store
+
+apps/api/storage/
+*.db
+apps/api/models/cv2_dnn/
+*.mp4
+*.caffemodel
+*.prototxt

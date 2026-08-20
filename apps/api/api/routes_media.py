@@ -39,14 +39,29 @@ async def create_media_job(
     db.commit()
     db.refresh(job)
     
-    background_tasks.add_task(process_media_job, job_id, db)
+    def process_media_job_wrapper(jid: str):
+        try:
+            process_media_job(jid)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            from core.database import SessionLocal
+            db_local = SessionLocal()
+            failed_job = db_local.query(Job).filter(Job.id == jid).first()
+            if failed_job:
+                failed_job.status = "failed"
+                db_local.commit()
+            db_local.close()
+
+    background_tasks.add_task(process_media_job_wrapper, job_id)
     
     return MediaJobResponse(
         id=job.id,
         status=job.status,
         progress=job.progress,
         filename=job.filename,
-        sha256=job.sha256
+        sha256=job.sha256,
+        current_step=job.current_step
     )
 
 @router.get("/jobs/{job_id}", response_model=MediaJobResponse)
@@ -60,7 +75,8 @@ async def get_media_job(job_id: str, db: Session = Depends(get_db)):
         status=job.status,
         progress=job.progress,
         filename=job.filename,
-        sha256=job.sha256
+        sha256=job.sha256,
+        current_step=job.current_step
     )
 
 @router.get("/jobs/{job_id}/result", response_model=MediaResultResponse)

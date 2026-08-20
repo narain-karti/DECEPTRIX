@@ -9,6 +9,7 @@ class MediaJobResponse(BaseModel):
     progress: int
     filename: Optional[str] = None
     sha256: Optional[str] = None
+    current_step: Optional[str] = None
 
 class MediaResultResponse(BaseModel):
     id: str

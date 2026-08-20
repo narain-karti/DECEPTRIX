@@ -1,99 +1,109 @@
 "use client";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
-type FlowState = "upload" | "processing" | "results";
+type FlowState = "upload" | "processing" | "results" | "failed";
 
-const STAGES = ["Validate", "Extract", "Analyze", "Provenance", "Fuse", "Report"];
-
-const MOCK_KEYFRAMES = [
-  { time: "0:03", status: "clean" },
-  { time: "0:08", status: "clean" },
-  { time: "0:15", status: "warning" },
-  { time: "0:22", status: "clean" },
-  { time: "0:31", status: "warning" },
-  { time: "0:45", status: "clean" },
-];
-
-const MOCK_EVIDENCE = [
-  {
-    color: "#00d68f",
-    title: "Visual Analysis — SBI Detector v2.1",
-    desc: "No significant manipulation artifacts detected in 14 of 16 sampled frames. Frames at 0:15 and 0:31 show minor compression artifacts consistent with social-media re-encoding.",
-    meta: ["Score: 0.12 (low risk)", "CPU inference", "Coverage: 85%"],
-  },
-  {
-    color: "#00b4d8",
-    title: "Technical Metadata",
-    desc: "Container: MP4 (isom/iso2). Codec: H.264 High@L3.1. Resolution: 1080×1920. Duration: 48s. Creation date present in container header.",
-    meta: ["ffprobe v6.1", "All streams verified"],
-  },
-  {
-    color: "#8a8a8a",
-    title: "Content Provenance (C2PA)",
-    desc: "No C2PA content credentials found. This is informational — absence of credentials is not evidence of manipulation.",
-    meta: ["Status: absent", "Not suspicious"],
-  },
-  {
-    color: "#ffaa00",
-    title: "Semantic Analysis (Advisory)",
-    desc: "Visual content shows a public gathering with signage. No faces detected for deepfake analysis. Audio track contains background speech — language detection: Hindi.",
-    meta: ["Advisory only", "Not evaluated for accuracy"],
-  },
-];
+const STAGES = ["Initialize", "Extract Sequences", "Run Spatio-Temporal Models", "Analyze Audio", "Fuse Results", "Finalize"];
 
 export default function MediaAudit() {
   const [flow, setFlow] = useState<FlowState>("upload");
   const [dragOver, setDragOver] = useState(false);
-  const [file, setFile] = useState<{ name: string; size: string; type: string } | null>(null);
-  const [stageIdx, setStageIdx] = useState(-1);
+  const [file, setFile] = useState<File | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState("Initializing...");
+  const [resultData, setResultData] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const simulateUpload = useCallback((name: string, sizeBytes: number, type: string) => {
-    const sizeStr =
-      sizeBytes > 1024 * 1024
-        ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-        : `${(sizeBytes / 1024).toFixed(0)} KB`;
-    setFile({ name, size: sizeStr, type });
-  }, []);
+  // Derive stage index from backend progress (0-100)
+  const stageIdx = progress === 0 ? 0 : Math.min(Math.floor((progress / 100) * STAGES.length), STAGES.length - 1);
 
-  const startProcessing = () => {
+  const startProcessing = async () => {
+    if (!file) return;
     setFlow("processing");
-    setStageIdx(0);
     setProgress(0);
+    setResultData(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/v1/media/jobs", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json();
+      setJobId(data.id);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to upload video to backend API. Error: ${err.message}`);
+      setFlow("upload");
+    }
   };
 
   useEffect(() => {
-    if (flow !== "processing") return;
-    if (stageIdx >= STAGES.length) {
-      setFlow("results");
-      return;
-    }
-    const dur = 800 + Math.random() * 600;
-    const timer = setTimeout(() => {
-      setStageIdx((p) => p + 1);
-      setProgress(((stageIdx + 1) / STAGES.length) * 100);
-    }, dur);
-    return () => clearTimeout(timer);
-  }, [flow, stageIdx]);
+    if (flow !== "processing" || !jobId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/v1/media/jobs/${jobId}`);
+        const data = await res.json();
+        
+        setProgress(data.progress);
+        if (data.current_step) {
+          setCurrentStep(data.current_step);
+        }
+
+        if (data.status === "completed") {
+          clearInterval(interval);
+          const resultRes = await fetch(`http://127.0.0.1:8000/api/v1/media/jobs/${jobId}/result`);
+          const resultJson = await resultRes.json();
+          setResultData(resultJson);
+          setFlow("results");
+        } else if (data.status === "failed" || data.status === "error") {
+          clearInterval(interval);
+          setErrorMsg("The ML pipeline encountered an error while processing the media. Please ensure the video is valid and try again.");
+          setFlow("failed");
+        }
+      } catch (err: any) {
+        console.error("Polling error:", err);
+        // Optional: If we want to fail on network disconnect, we can do it here.
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [flow, jobId]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const f = e.dataTransfer.files[0];
-    if (f) simulateUpload(f.name, f.size, f.type);
+    if (f) setFile(f);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) simulateUpload(f.name, f.size, f.type);
+    if (f) setFile(f);
   };
 
   const reset = () => {
     setFlow("upload");
     setFile(null);
-    setStageIdx(-1);
+    setJobId(null);
     setProgress(0);
+    setResultData(null);
+  };
+
+  const formatSize = (bytes: number) => {
+    return bytes > 1024 * 1024
+      ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+      : `${(bytes / 1024).toFixed(0)} KB`;
   };
 
   /* ------ UPLOAD STATE ------ */
@@ -142,11 +152,8 @@ export default function MediaAudit() {
               <div className="file-details">
                 <div className="file-name">{file.name}</div>
                 <div className="file-meta">
-                  <span>{file.size}</span>
+                  <span>{formatSize(file.size)}</span>
                   <span>{file.type || "video/mp4"}</span>
-                </div>
-                <div className="file-hash">
-                  SHA-256: a1b2c3d4e5f6...{Math.random().toString(36).slice(2, 10)}
                 </div>
               </div>
               <button className="file-remove" onClick={() => setFile(null)}>
@@ -166,9 +173,8 @@ export default function MediaAudit() {
 
         <div style={{ marginTop: 32 }}>
           <p className="caption">
-            ⚠️ By uploading, you accept that temporary processing occurs on our
-            servers. Files are deleted after analysis. No content is used for
-            model training.
+            ⚠️ By uploading, you accept that processing occurs on our servers.
+            Files are deleted after analysis.
           </p>
         </div>
       </div>
@@ -192,7 +198,7 @@ export default function MediaAudit() {
             <div className="file-details">
               <div className="file-name">{file.name}</div>
               <div className="file-meta">
-                <span>{file.size}</span>
+                <span>{formatSize(file.size)}</span>
               </div>
             </div>
           </div>
@@ -225,16 +231,16 @@ export default function MediaAudit() {
           <div className="progress-bar-track" style={{ marginTop: 32 }}>
             <div
               className="progress-bar-fill"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${progress}%`, transition: "width 0.5s ease" }}
             />
           </div>
-          <div className="progress-status">
-            <span className="progress-status-text">
+          <div className="progress-status" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="progress-status-text" style={{ fontStyle: "italic", opacity: 0.8 }}>
               {stageIdx < STAGES.length
-                ? `Running: ${STAGES[stageIdx]}...`
+                ? currentStep
                 : "Finalizing..."}
             </span>
-            <span className="progress-status-percent">
+            <span className="progress-status-percent" style={{ fontWeight: "bold" }}>
               {Math.round(progress)}%
             </span>
           </div>
@@ -243,7 +249,57 @@ export default function MediaAudit() {
     );
   }
 
+  /* ------ FAILED STATE ------ */
+  if (flow === "failed") {
+    return (
+      <div>
+        <div className="flow-step-nav">
+          <div className="flow-step-dot completed" />
+          <div className="flow-step-dot error" style={{ background: "#ff4a4a" }} />
+          <div className="flow-step-dot" />
+          <span className="flow-step-label" style={{ color: "#ff4a4a" }}>Failed</span>
+        </div>
+        
+        <div className="verdict-banner verdict-warning" style={{ borderLeftColor: "#ff4a4a", background: "rgba(255, 74, 74, 0.05)" }}>
+          <div className="verdict-icon">🚨</div>
+          <div style={{ flex: 1 }}>
+            <div className="verdict-title" style={{ color: "#ff4a4a" }}>Analysis Failed</div>
+            <div className="verdict-desc">{errorMsg}</div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 32 }}>
+          <button className="btn-primary" onClick={reset}>
+            Try Another Video
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   /* ------ RESULTS STATE ------ */
+  const isManipulated = resultData?.verdict === "Likely Manipulated";
+  const isSuspicious = resultData?.verdict === "Suspicious";
+  const isReal = resultData?.verdict === "Likely Real";
+
+  let verdictClass = "verdict-clean";
+  let verdictIcon = "✅";
+  let verdictTitle = resultData?.verdict || "Analysis Complete";
+
+  if (isManipulated) {
+    verdictClass = "verdict-warning";
+    verdictIcon = "🚨";
+  } else if (isSuspicious) {
+    verdictClass = "verdict-warning";
+    verdictIcon = "⚠️";
+  }
+
+  // Find max visual score
+  const visualEvents = resultData?.timeline_evidence?.filter((e: any) => e.modality === "media") || [];
+  const maxScore = visualEvents.length > 0 
+    ? Math.max(...visualEvents.map((e: any) => e.score_or_null || 0)) 
+    : 0;
+
   return (
     <div>
       <div className="flow-step-nav">
@@ -254,28 +310,18 @@ export default function MediaAudit() {
       </div>
 
       {/* Verdict */}
-      <div className="verdict-banner verdict-clean">
-        <div className="verdict-icon">✅</div>
+      <div className={`verdict-banner ${verdictClass}`}>
+        <div className="verdict-icon">{verdictIcon}</div>
         <div style={{ flex: 1 }}>
           <div className="verdict-title">
-            No Significant Technical Anomalies Detected
+            {verdictTitle}
           </div>
           <div className="verdict-desc">
-            Analysis of 16 sampled frames found no high-confidence manipulation
-            artifacts. Minor compression artifacts are consistent with
-            social-media re-encoding.
-          </div>
-          <div className="verdict-limitations">
-            <div className="verdict-limitations-title">
-              ⚠️ What this does NOT prove
-            </div>
-            <ul>
-              <li>— This video has not been independently verified as authentic</li>
-              <li>— Only 16 of ~1440 frames were sampled (85% coverage by scene)</li>
-              <li>— Audio deepfake analysis was not performed</li>
-              <li>— Absence of C2PA credentials is informational, not suspicious</li>
-              <li>— This analysis is not a legal certificate of authenticity</li>
-            </ul>
+            {isManipulated ? 
+              "Analysis found high-confidence spatio-temporal artifacts consistent with deepfake manipulation." :
+              isSuspicious ? 
+              "Analysis found suspicious artifacts, but they were below the high-confidence threshold." :
+              "Analysis found no high-confidence manipulation artifacts. Minor compression artifacts are consistent with social-media re-encoding."}
           </div>
         </div>
       </div>
@@ -285,21 +331,31 @@ export default function MediaAudit() {
         {/* Keyframes */}
         <div className="result-card">
           <div className="result-card-header">
-            <div className="result-card-title">🎞️ Sampled Keyframes</div>
-            <span className="result-card-status status-clean">16 frames</span>
+            <div className="result-card-title">🎞️ Sequence Analysis</div>
+            <span className={`result-card-status ${isReal ? 'status-clean' : 'status-warning'}`}>
+              {visualEvents.length} clips
+            </span>
           </div>
           <div className="keyframes-grid">
-            {MOCK_KEYFRAMES.map((kf, i) => (
-              <div className="keyframe" key={i}>
-                <div
-                  className="keyframe-indicator"
-                  style={{
-                    background: kf.status === "clean" ? "#00d68f" : "#ffaa00",
-                  }}
-                />
-                <div className="keyframe-time">{kf.time}</div>
-              </div>
-            ))}
+            {visualEvents.slice(0, 6).map((ev: any, i: number) => {
+              const time = ev.artifact_refs?.[0]?.timestamp_sec || 0;
+              const mins = Math.floor(time / 60);
+              const secs = time % 60;
+              const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+              const isEventClean = ev.score_or_null < 0.4;
+              
+              return (
+                <div className="keyframe" key={i}>
+                  <div
+                    className="keyframe-indicator"
+                    style={{
+                      background: isEventClean ? "#00d68f" : "#ffaa00",
+                    }}
+                  />
+                  <div className="keyframe-time">{timeStr}</div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -307,73 +363,23 @@ export default function MediaAudit() {
         <div className="result-card">
           <div className="result-card-header">
             <div className="result-card-title">🔬 Visual Detector</div>
-            <span className="result-card-status status-clean">Low Risk</span>
+            <span className={`result-card-status ${isReal ? 'status-clean' : 'status-warning'}`}>
+              {isManipulated ? "High Risk" : isSuspicious ? "Medium Risk" : "Low Risk"}
+            </span>
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span className="caption">Manipulation Score</span>
-              <span style={{ color: "#00d68f", fontWeight: 700, fontSize: 14 }}>0.12</span>
+              <span className="caption">Max Manipulation Score</span>
+              <span style={{ color: isReal ? "#00d68f" : "#ffaa00", fontWeight: 700, fontSize: 14 }}>
+                {maxScore.toFixed(2)}
+              </span>
             </div>
             <div className="progress-bar-track">
-              <div className="progress-bar-fill" style={{ width: "12%", background: "#00d68f" }} />
+              <div className="progress-bar-fill" style={{ width: `${maxScore * 100}%`, background: isReal ? "#00d68f" : "#ffaa00" }} />
             </div>
           </div>
           <div className="caption">
-            Model: SBI Detector v2.1 · CPU inference · 16 frames analyzed
-          </div>
-          <div className="tag tag-dark" style={{ marginTop: 12 }}>
-            Threshold: 0.65 for &quot;Likely Manipulated&quot;
-          </div>
-        </div>
-
-        {/* Metadata */}
-        <div className="result-card">
-          <div className="result-card-header">
-            <div className="result-card-title">📋 Technical Metadata</div>
-            <span className="result-card-status status-info">Extracted</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px" }}>
-            {[
-              ["Container", "MP4 (isom)"],
-              ["Codec", "H.264 High"],
-              ["Resolution", "1080×1920"],
-              ["Duration", "48s"],
-              ["Frame Rate", "30 fps"],
-              ["Audio", "AAC 44.1kHz"],
-              ["File Size", "12.4 MB"],
-              ["Created", "2026-08-18"],
-            ].map(([k, v]) => (
-              <div key={k} style={{ padding: "6px 0", borderBottom: "1px solid #2a2a2a" }}>
-                <div className="caption" style={{ marginBottom: 2 }}>{k}</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Provenance */}
-        <div className="result-card">
-          <div className="result-card-header">
-            <div className="result-card-title">🔗 Provenance</div>
-            <span className="result-card-status status-na">No Credentials</span>
-          </div>
-          <p style={{ fontSize: 14, color: "#b0b0b0", lineHeight: 1.7 }}>
-            No C2PA content credentials were found in this file. This is{" "}
-            <strong style={{ color: "#fff" }}>informational only</strong> — the
-            absence of provenance data is not evidence of manipulation.
-          </p>
-          <div
-            style={{
-              marginTop: 16,
-              padding: "12px 16px",
-              background: "rgba(255,255,255,0.04)",
-              borderRadius: 10,
-              fontSize: 13,
-              color: "#8a8a8a",
-            }}
-          >
-            Most consumer devices and social platforms do not yet embed C2PA
-            credentials. This status is expected for the majority of media.
+            Model: 3D ConvNet VideoMAE · {visualEvents.length} sequences analyzed
           </div>
         </div>
       </div>
@@ -384,29 +390,37 @@ export default function MediaAudit() {
           <div className="result-card-title">📊 Evidence Timeline</div>
         </div>
         <div className="evidence-timeline">
-          {MOCK_EVIDENCE.map((ev, i) => (
-            <div className="evidence-item" key={i}>
-              <div className="evidence-dot" style={{ background: ev.color }} />
-              <div className="evidence-content">
-                <div className="evidence-title">{ev.title}</div>
-                <div className="evidence-desc">{ev.desc}</div>
-                <div className="evidence-meta">
-                  {ev.meta.map((m, j) => (
-                    <span key={j}>{m}</span>
-                  ))}
+          {resultData?.timeline_evidence?.map((ev: any, i: number) => {
+            const isEventClean = ev.score_or_null < 0.4;
+            const color = isEventClean ? "#00d68f" : ev.score_or_null > 0.6 ? "#ff4a4a" : "#ffaa00";
+            
+            return (
+              <div className="evidence-item" key={i}>
+                <div className="evidence-dot" style={{ background: color }} />
+                <div className="evidence-content">
+                  <div className="evidence-title">
+                    {ev.modality === 'media' ? "Spatio-Temporal Sequence Analysis" : "Audio Deepfake Analysis"}
+                  </div>
+                  <div className="evidence-desc">{ev.explanation}</div>
+                  <div className="evidence-meta">
+                    <span>Model: {ev.model_or_connector}</span>
+                    <span>Score: {(ev.score_or_null || 0).toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Actions */}
       <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button className="btn-primary" onClick={() => alert("Downloading HTML report...")}>
-          Download Report <span className="btn-arrow">↓</span>
+        <button className="btn-primary" onClick={() => window.open(`http://127.0.0.1:8000${resultData.report_links.pdf}`, "_blank")}>
+          Download PDF Report <span className="btn-arrow">↓</span>
         </button>
-        <button className="btn-secondary" onClick={() => alert("Downloading JSON...")}>Download JSON</button>
+        <button className="btn-secondary" onClick={() => window.open(`http://127.0.0.1:8000${resultData.report_links.json}`, "_blank")}>
+          Download JSON
+        </button>
         <button className="btn-secondary" onClick={reset}>
           New Audit
         </button>

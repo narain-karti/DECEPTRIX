@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import uuid
 
@@ -13,7 +13,6 @@ router = APIRouter()
 @router.post("/audits", response_model=TextAuditResponse)
 async def create_text_audit(
     request: TextAuditRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     job_id = str(uuid.uuid4())
@@ -29,7 +28,7 @@ async def create_text_audit(
     db.commit()
     db.refresh(job)
     
-    background_tasks.add_task(process_text_audit, job_id, db)
+    process_text_audit.delay(job_id)
     
     return TextAuditResponse(
         id=job.id,

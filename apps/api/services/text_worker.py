@@ -5,6 +5,8 @@ import datetime
 import re
 from duckduckgo_search import DDGS
 from transformers import pipeline
+from core.celery_app import celery_app
+from core.database import SessionLocal
 
 from models.orm import Job
 from schemas.common import EvidenceEvent
@@ -25,9 +27,12 @@ def extract_claims(text: str):
     claims = [s.strip() for s in sentences if len(s.strip().split()) > 4]
     return claims
 
-async def process_text_audit(job_id: str, db: Session):
+@celery_app.task(name="services.text_worker.process_text_audit")
+def process_text_audit(job_id: str):
+    db = SessionLocal()
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
+        db.close()
         return
     
     job.progress = 10
@@ -48,6 +53,7 @@ async def process_text_audit(job_id: str, db: Session):
             job.verdict = "Unsupported"
             job.completed_at = datetime.datetime.utcnow()
             db.commit()
+            db.close()
             return
             
     job.progress = 25
@@ -106,7 +112,7 @@ async def process_text_audit(job_id: str, db: Session):
                     "citations": citations
                 })
 
-    await asyncio.to_thread(process_claims)
+    process_claims()
     
     job.progress = 80
     db.commit()
@@ -144,11 +150,12 @@ async def process_text_audit(job_id: str, db: Session):
     job.progress = 100
     job.status = "completed"
     job.verdict = verdict
-    job.evidence = [evidence.model_dump()]
+    job.evidence = [evidence.model_dump(mode='json')]
     
     # Store extracted claims in report_data
-    claim_items = [ClaimItem(claim_id=c["id"], text=c["text"], outcome=c["outcome"], citations=c["citations"]).model_dump() for c in processed_claims]
+    claim_items = [ClaimItem(claim_id=c["id"], text=c["text"], outcome=c["outcome"], citations=c["citations"]).model_dump(mode='json') for c in processed_claims]
     job.report_data = {"extracted_claims": claim_items}
     
     job.completed_at = datetime.datetime.utcnow()
     db.commit()
+    db.close()
