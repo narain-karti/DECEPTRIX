@@ -1,0 +1,245 @@
+SMART INDIA HACKATHON  |  2026
+DECEPTRIX
+MVP Build Specification
+A five-day, four-person blueprint for an explainable media and rumour-audit prototype
+Prepared for
+DECEPTRIX hackathon team and technical mentors
+Purpose
+Build a demonstrable, credible MVP in five days
+Date
+19 August 2026
+What the name means
+DECEPTRIX stands for DEception, Content, Evidence, Provenance, Trust, Risk Intelligence eXchange. It describes a platform that collects independent evidence and returns an auditable risk assessment instead of a black-box verdict.
+1. MVP decision
+The five-day MVP is a web application with two investigation modes: Media Audit for short videos and Rumour Audit for pasted social-media claims. Both produce a timestamped or claim-level evidence report, show uncertainty, cite sources, and never claim to be a legal certificate of truth.
+MVP north star
+A judge can upload a 60-second clip or paste a rumour, understand what DECEPTRIX found, inspect evidence, and download an audit report in one guided demonstration.
+In scope
+Video upload, validation, hash, metadata inspection, sampled frames, one real visual-manipulation detector, evidence timeline, JSON report, and print-ready HTML/PDF report.
+Rumour textbox for English text: claim extraction, official-first evidence retrieval, source cards, and one of five cautious outcomes: supported, contradicted, context missing, no authoritative coverage, or inconclusive.
+A connector boundary that can later support government data, fact-check systems, search providers, document verification, and partner applications.
+Three fixture demos: suspected manipulation, no-conclusive-evidence media, and a government-policy rumour supported or contradicted by authoritative sources.
+Explicitly out of scope for five days
+User accounts, teams, public multi-tenant deployment, live-streaming, long videos, training a new model, universal AI-writing detection, URL media downloading, fully automated web crawling, and any automatic moderation or takedown action.
+2. Product flows and features
+Mode
+User action
+System result
+MVP acceptance check
+Media Audit
+Upload MP4, MOV, or WebM up to 60 seconds / 200 MB; accept privacy notice.
+Creates an analysis job, validates media, stores SHA-256 and technical facts.
+Bad type, corrupt file, no video stream, or limit breach returns a clear error.
+Processing
+Wait on a visible progress screen.
+Stages show validation, extraction, visual analysis, provenance, fusion, report.
+A failed optional stage does not erase successful evidence.
+Media results
+Open a result and select a time range.
+Shows risk label, detector status, keyframes, explanation, limitations, and metadata.
+At least one real detector finding or an honest no-finding/inconclusive state is shown.
+Rumour Audit
+Paste a social post, message, or news claim.
+Splits text into reviewable atomic claims and lets the user select them.
+System never silently rewrites a claim into a different meaning.
+Claim results
+Inspect cited source cards.
+Displays outcome, exact supporting/contradicting passages, source tier, publication date, and limitations.
+Every non-inconclusive result has at least one attributable source.
+Report
+Download report.
+Exports JSON plus HTML-to-PDF audit report with hashes, sources, timestamps, pipeline version, and disclaimer.
+Generated report opens and matches the displayed result.
+3. System architecture
+Use a modular monolith for the hackathon: one Next.js application, one FastAPI service, one worker process, SQLite, and local object storage. The boundaries are intentionally API-shaped so they can become independent services later.
+Layer
+MVP implementation
+Responsibility
+Future evolution
+Web client
+Next.js + TypeScript
+Upload, job progress, timeline, source cards, report view.
+Embeddable React widget and white-label portal.
+API
+FastAPI + Pydantic
+Create jobs, validate payloads, retrieve reports, expose OpenAPI.
+Versioned public API gateway and tenant controls.
+Worker
+Python subprocess / FastAPI background worker
+Run FFmpeg, frame selection, detector adapters, and report assembly.
+Redis queue with independently scalable workers.
+Storage
+SQLite + local files
+Jobs, evidence, source snapshots, reports, temporary assets.
+PostgreSQL + S3-compatible encrypted storage.
+Evidence core
+Versioned JSON schema
+Normalize media and text findings before fusion.
+SDK, policy packs, partner detector marketplace.
+Connectors
+Small Python adapters
+Fact-check API, allowlisted official-source search, dataset connectors.
+Government/sector connectors with consent and rate-limit policies.
+Media Audit data flow
+POST /api/v1/media/jobs receives the file after type and size checks; create case_id and SHA-256.
+Run ffprobe for duration, codecs, resolution and stream checks; FFmpeg extracts a mono 16 kHz WAV and thumbnails.
+Frame planner selects uniform samples, scene boundaries, and face-containing frames. It records coverage so missing faces are never hidden.
+A single pinned, pretrained visual-manipulation detector scores eligible frames. Its adapter turns raw results into evidence events.
+A provenance adapter reports verified, invalid, absent, unsupported, or unavailable. Absent credentials are informational, not suspicious.
+Optional semantic analyzer receives small frame batches and returns strict JSON observations. It remains advisory unless evaluated.
+Fusion evaluates evidence quality and disagreement, creates a cautious label, and builds report JSON/PDF.
+Rumour Audit bridge architecture
+The rumour service is a retrieval-and-evidence system, not an LLM that decides truth. Search is used to discover candidate sources; only retrieved source passages and configured source policy can support a displayed conclusion.
+Step
+Component
+Rule
+1
+Input guard
+Limit size, remove tracking parameters, detect language, warn that personal data should not be pasted.
+2
+Claim extractor
+Return 1-5 atomic, checkable claims as JSON; user can deselect or edit before research.
+3
+Domain router
+Classify government scheme/policy, health, election, disaster, finance, or general news to choose the source policy.
+4
+Query planner
+Create quoted and paraphrased queries; search official domains first, then fact-check indexes, then reputable discovery sources.
+5
+Connector layer
+Call configured adapters with timeouts, caching, retries, audit logs, and source-tier metadata.
+6
+Evidence comparator
+Extract passages; compare only the specific claim and record support, contradiction, or missing context.
+7
+Audit composer
+Return an outcome, source cards, evidence gaps, search timestamp, and a human-review recommendation.
+Source policy for the MVP
+Tier
+Use
+Examples / implementation note
+Tier 1: primary authority
+May support or contradict a claim.
+Official ministry, regulator, election authority, statutory body, gazette, government dataset, or original institution publication.
+Tier 2: official fact-check
+Strong reusable evidence where scope matches.
+PIB Fact Check for Government of India matters; Google Fact Check Tools API claim-search results when available.
+Tier 3: discovery only
+Find leads; cannot alone determine the result.
+SerpApi Google/News results, reputable news reports, social posts, blogs.
+Tier 4: untrusted
+Never use as final evidence.
+Anonymous accounts, repost aggregators, screenshots without original source, unsourced forwards.
+Critical product rule
+DECEPTRIX may say “no authoritative coverage found” after bounded search. It must not say a rumour is true merely because it found no contradiction, and it must not use SerpApi ranking as evidence.
+4. Core schemas and API contracts
+EvidenceEvent - shared media and text contract
+Required fields: event_id, case_id, modality, type, status, score_or_null, severity, confidence_quality, scope, explanation, source_refs, artifact_refs, model_or_connector, version, limitations, created_at. The status field is completed, unavailable, failed, or not_applicable.
+Minimum endpoints
+Method
+Route
+Purpose
+POST
+/api/v1/media/jobs
+Validate and create a video investigation.
+GET
+/api/v1/media/jobs/{id}
+Return stage, percent, errors, and timestamps.
+GET
+/api/v1/media/jobs/{id}/result
+Return verdict, timeline evidence, provenance, and report links.
+POST
+/api/v1/text/audits
+Create a rumour/claim audit from pasted text.
+GET
+/api/v1/text/audits/{id}
+Return extracted claims, citations, outcomes, and audit trail.
+GET
+/api/v1/reports/{id}.json
+Download tamper-evident JSON evidence record.
+GET
+/api/v1/reports/{id}.pdf
+Download the human-readable audit report.
+GET
+/health
+Demo-friendly service health check.
+Verdict rules
+Media: “Likely manipulated” requires high-quality, localized evidence from the selected detector; otherwise use “Inconclusive” or “No significant technical anomalies detected in analyzed coverage.”
+Media: show provenance separately. “No credentials found” is neither proof of authenticity nor manipulation.
+Text: outcomes apply to one atomic claim, not the entire pasted message. An audit may contain mixed outcomes.
+Text: every conclusion includes a source list and a “what could change this assessment” note.
+5. Five-day, four-person delivery plan
+Day
+Member 1 - Product/UI
+Member 2 - API/platform
+Member 3 - Media/ML
+Member 4 - Rumour/research + QA
+Day 1
+Next.js shell, two tabs, mocked result screens.
+FastAPI project, SQLite schema, job contract, file endpoints.
+FFmpeg proof: upload -> metadata -> frames.
+Source policy, connector interface, two prepared rumour fixtures.
+Day 2
+Upload, progress, result/timeline components wired to API.
+Job state, local storage, worker runner, error paths.
+Pinned visual detector adapter and evidence JSON.
+Text input, atomic-claim mock/LLM schema, source-card UI data.
+Day 3
+Polish keyframes, evidence drawer, mobile-safe layout.
+Fusion rules, JSON report, report hash, integration tests.
+Frame planner, metadata/provenance adapter, quality warnings.
+Official-source/Fact Check connector; SerpApi discovery adapter behind env key.
+Day 4
+HTML report style and demo narrative screens.
+PDF route, cleanup task, Docker Compose, health check.
+Validate detector on fixtures; optimize CPU fallback.
+Citation verification, text audit outcomes, negative/error cases.
+Day 5
+Visual QA and backup demo video.
+End-to-end runbook, logs, final integration.
+Lock model/version/limitations documentation.
+Test matrix, README, pitch evidence, judges Q&A preparation.
+Daily integration rule
+Every day ends with one vertical slice on the shared branch: upload or paste -> real API -> stored case -> rendered result. No team member should spend more than one day building a module that cannot produce a shared evidence object.
+6. Build steps from zero
+Create a monorepo: apps/web, services/api, packages/contracts, storage, fixtures, docs. Add README and .env.example before writing features.
+Define Pydantic models and TypeScript types for Case, EvidenceEvent, Claim, SourceRef, AuditOutcome, and Report. Generate or hand-maintain a single contract file.
+Create FastAPI health route and Next.js landing page; make them communicate locally.
+Implement media intake and a mock worker. Do not integrate a model until the job/result lifecycle works.
+Implement preprocessing with safe subprocess calls to ffprobe/FFmpeg; capture stderr and return error codes, never shell-concatenate user filenames.
+Integrate one model with a locked weight/version and an adapter test using a fixture. Persist raw model score separately from display label.
+Implement Text Audit with a fixture-backed connector first; then add real connector calls using environment variables and source allowlists.
+Build fusion as pure, tested functions. Reports consume only normalized evidence, never raw model or LLM text.
+Generate JSON first, then render the same structured report as HTML/PDF.
+Run fixture tests and practice the complete demo offline. Capture screenshots and create a backup recorded demo.
+7. Test, safety, and demo checklist
+Area
+Must test before judging
+Validation
+Oversized, unsupported, corrupt, and no-video files show useful errors; pasted text limits and empty state work.
+Partial failure
+One unavailable model or connector leaves a truthful partial report rather than a failed case.
+Evidence integrity
+Every displayed score has a detector/connector/version; every text conclusion has citations.
+Privacy
+Temporary media is deleted after the demo window; no API keys, user files, or private source content appear in logs.
+Honesty
+No “AI-generated text” claim based only on writing style; no “authentic” label from absence of evidence.
+Demo resilience
+Prepared fixtures, local fallback results, and a short backup video exist if network/API inference fails.
+8. Post-hackathon technical roadmap
+Phase
+Focus
+Exit criterion
+Foundation
+PostgreSQL, object storage, Redis workers, authentication, audit logs.
+Reliable concurrent analysis with deletion and retention controls.
+Evidence platform
+More detector adapters, calibration evaluation, source connector registry, review workflow.
+Evidence schema is stable and documented for external contributors.
+Developer platform
+REST API, SDKs, webhooks, policy packs, embeddable widget.
+A partner app can block, warn, or route uploads using DECEPTRIX evidence.
+Sector deployment
+Government, newsroom, education, recruitment, and enterprise policy bundles.
+Each deployment has defined sources, thresholds, human oversight, and evaluation.
