@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import os
 
 from core.database import engine, Base
@@ -22,6 +23,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files (storage directory) so frontend can access generated faces and outputs
+os.makedirs(settings.STORAGE_DIR, exist_ok=True)
+app.mount("/storage", StaticFiles(directory=settings.STORAGE_DIR), name="storage")
 
 # API Routers
 app.include_router(routes_media.router, prefix=f"{settings.API_V1_STR}/media", tags=["media"])

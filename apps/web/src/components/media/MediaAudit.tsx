@@ -344,15 +344,62 @@ export default function MediaAudit() {
               const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
               const isEventClean = ev.score_or_null < 0.4;
               
+              // Get the face crop image path if available
+              const faces = ev.artifact_refs?.[0]?.faces || [];
+              let faceCropPath = faces.length > 0 ? faces[0].face_crop : null;
+              
+              // We need to convert the local file path to a URL path through the storage mount
+              // e.g. "apps/api/storage/..." -> "/storage/..."
+              if (faceCropPath && typeof faceCropPath === 'string') {
+                const storageIdx = faceCropPath.indexOf('storage');
+                if (storageIdx !== -1) {
+                   faceCropPath = `http://127.0.0.1:8000/${faceCropPath.substring(storageIdx).replace(/\\/g, '/')}`;
+                }
+              }
+
               return (
-                <div className="keyframe" key={i}>
+                <div className="keyframe" key={i} style={{ 
+                  position: 'relative', 
+                  overflow: 'hidden',
+                  background: '#1a1d21', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  border: `2px solid ${isEventClean ? "#00d68f" : "#ffaa00"}`
+                }}>
+                  {faceCropPath ? (
+                    <img 
+                      src={faceCropPath} 
+                      alt={`Sequence at ${timeStr}`} 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} 
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div style={{ color: '#666', fontSize: 12 }}>No Face</div>
+                  )}
                   <div
                     className="keyframe-indicator"
                     style={{
                       background: isEventClean ? "#00d68f" : "#ffaa00",
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%'
                     }}
                   />
-                  <div className="keyframe-time">{timeStr}</div>
+                  <div className="keyframe-time" style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(0,0,0,0.7)',
+                    padding: '4px',
+                    textAlign: 'center'
+                  }}>{timeStr}</div>
                 </div>
               );
             })}
