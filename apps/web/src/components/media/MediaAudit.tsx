@@ -213,10 +213,14 @@ export default function MediaAudit() {
                 }`}
                 key={i}
               >
-                <div className="progress-dot">
+                <div className="progress-dot" style={{
+                  animation: i === stageIdx ? "pulse 2s infinite ease-in-out" : "none"
+                }}>
                   {i < stageIdx ? "✓" : ""}
                 </div>
-                <div className="progress-stage-label">{stage}</div>
+                <div className="progress-stage-label" style={{
+                  animation: i === stageIdx ? "pulse 2.5s infinite ease-in-out" : "none"
+                }}>{stage}</div>
                 {i < STAGES.length - 1 && (
                   <div className="progress-line">
                     <div
@@ -237,12 +241,45 @@ export default function MediaAudit() {
           <div className="progress-status" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="progress-status-text" style={{ fontStyle: "italic", opacity: 0.8 }}>
               {stageIdx < STAGES.length
-                ? currentStep
+                ? <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{
+                      width: "12px", height: "12px", borderRadius: "50%", 
+                      border: "2px solid var(--accent)", 
+                      borderTopColor: "transparent", 
+                      animation: "spin 1s linear infinite"
+                    }} />
+                    {currentStep}
+                  </span>
                 : "Finalizing..."}
             </span>
             <span className="progress-status-percent" style={{ fontWeight: "bold" }}>
               {Math.round(progress)}%
             </span>
+          </div>
+
+          <div style={{ marginTop: "24px", padding: "16px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)", position: "relative", overflow: "hidden" }}>
+            <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", display: "flex", justifyContent: "space-between" }}>
+              <span>Live Terminal</span>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#00d68f", animation: "pulse 1.5s infinite" }} />
+                Connected
+              </span>
+            </div>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontFamily: "monospace", fontSize: "11px", color: "#a5d6ff", height: "60px", overflow: "hidden" }}>
+              <div style={{ opacity: 0.4 }}>[sys] init workers pool (4 threads)</div>
+              <div style={{ opacity: 0.6 }}>[gpu] alloc tensor mem size=1.4GB</div>
+              <div style={{ opacity: 0.8 }}>[model] load weights 'videomae-v2' (fp16)</div>
+              <div style={{ 
+                opacity: 1,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                borderRight: "2px solid #a5d6ff",
+                animation: "typing 2s steps(40, end), blink-caret .75s step-end infinite"
+              }}>
+                [task] {currentStep.toLowerCase()}...
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -1560,6 +1560,201 @@ input, textarea, select {
   animation: loading 1.5s infinite;
 }
 
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.claim-text {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.claim-domain {
+  display: flex;
+}
+
+/* Outcome box */
+.outcome-card {
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-card);
+}
+
+.outcome-contradicted {
+  background-color: rgba(255, 77, 77, 0.08);
+  border: 1px solid rgba(255, 77, 77, 0.2);
+}
+
+.outcome-label {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ff4d4d;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.outcome-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.tier-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.tier-badge.Contradicted {
+  background-color: rgba(255, 77, 77, 0.12);
+  color: #ff4d4d;
+}
+
+/* Source card */
+.source-card {
+  background-color: var(--surface-dark);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.tier-1-border { border-left-color: #00d68f; }
+.tier-2-border { border-left-color: #00b4d8; }
+.tier-3-border { border-left-color: #ffaa00; }
+.tier-4-border { border-left-color: #ff4d4d; }
+
+.source-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.source-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tier-badge.tier-1 { background-color: rgba(0, 214, 143, 0.12); color: #00d68f; }
+.tier-badge.tier-2 { background-color: rgba(0, 180, 216, 0.12); color: #00b4d8; }
+.tier-badge.tier-3 { background-color: rgba(255, 170, 0, 0.12); color: #ffaa00; }
+.tier-badge.tier-4 { background-color: rgba(255, 77, 77, 0.12); color: #ff4d4d; }
+
+.source-passage {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.source-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.source-meta-item {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* What this does NOT prove block */
+.not-prove, .verdict-limitations {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-top: 24px;
+}
+
+.not-prove-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.not-prove ul {
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.not-prove li::before {
+  content: "— ";
+  color: var(--accent);
+}
+
+/* HTML and JSON report mockups */
+.report-preview-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .report-preview-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-html-mockup {
+  background-color: var(--surface-dark);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.report-json-mockup {
+  background-color: #09090A;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #a5d6ff;
+  overflow-x: auto;
+}
+
+.report-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Skeleton Loading State Animation */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-secondary) 25%, rgba(255, 255, 255, 0.06) 50%, var(--bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
 @keyframes loading {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
@@ -1569,4 +1764,18 @@ input, textarea, select {
   0% { transform: scale(1); opacity: 0.8; }
   50% { transform: scale(1.1); opacity: 1; }
   100% { transform: scale(1); opacity: 0.8; }
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes typing {
+  from { width: 0 }
+  to { width: 100% }
+}
+
+@keyframes blink-caret {
+  from, to { border-color: transparent }
+  50% { border-color: #a5d6ff; }
 }
