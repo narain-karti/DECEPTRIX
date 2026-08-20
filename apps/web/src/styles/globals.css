@@ -1560,10 +1560,7 @@ input, textarea, select {
   animation: loading 1.5s infinite;
 }
 
-  color: var(--text-muted);
-  text-transform: uppercase;
-  margin-bottom: 2px;
-}
+
 
 .claim-text {
   font-size: 14px;
