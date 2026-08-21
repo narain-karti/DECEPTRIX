@@ -59,10 +59,11 @@ def score_deepfake_face(pil_img):
     logit_real = float(logits[real_idx].item())
     delta = logit_fake - logit_real
     
-    # Calibrated sigmoid centered at delta=7.5:
-    # Real video frames (delta -3.0 to 6.0) -> score 0.01 - 0.25
-    # True AI generated faces (delta 11.0 to 14.0) -> score 0.95 - 0.999
-    calibrated = 1.0 / (1.0 + np.exp(-0.85 * (delta - 7.5)))
+    # Balanced sigmoid centered at delta=3.8:
+    # Real video (delta < 2.0) -> score < 0.15
+    # AI video (delta >= 5.5) -> score >= 0.85
+    # Pure AI avatars (delta >= 10.0) -> score >= 0.99
+    calibrated = 1.0 / (1.0 + np.exp(-1.0 * (delta - 3.8)))
     return float(max(0.0, min(1.0, calibrated)))
 
 def get_face_net():
@@ -481,23 +482,26 @@ def process_media_job(job_id: str):
         # Multi-modal agreement count across independent signals
         elevated_signals = sum([
             1 if deepfake_primary > 0.60 else 0,
-            1 if lip_sync_val > 0.50 else 0,
+            1 if lip_sync_val > 0.45 else 0,
             1 if jitter_max > 0.45 else 0,
             1 if freq_max > 0.35 else 0,
         ])
 
-        if deepfake_primary >= 0.85 and elevated_signals >= 1:
+        if deepfake_primary >= 0.75 and elevated_signals >= 1:
             # High-confidence AI generation (e.g. synthetic face synthesis)
-            final_score = min(1.0, deepfake_primary)
+            final_score = min(1.0, max(0.85, deepfake_primary))
             verdict = "Likely Manipulated"
-        elif deepfake_primary >= 0.60 and elevated_signals >= 2:
-            final_score = 0.70
+        elif deepfake_primary >= 0.55 and elevated_signals >= 2:
+            final_score = min(0.90, max(0.70, (deepfake_primary * 0.6) + (corroboration * 0.4)))
+            verdict = "Likely Manipulated"
+        elif elevated_signals >= 2:
+            final_score = 0.68
             verdict = "Likely Manipulated"
         elif elevated_signals >= 1 or deepfake_primary >= 0.45:
             final_score = max(0.35, min(0.55, deepfake_primary))
             verdict = "Suspicious"
         else:
-            final_score = max(0.05, min(0.28, (deepfake_primary * 0.4) + (corroboration * 0.3)))
+            final_score = max(0.05, min(0.25, (deepfake_primary * 0.5) + (corroboration * 0.3)))
             verdict = "Likely Real"
 
         final_score = float(max(0.0, min(1.0, final_score)))
