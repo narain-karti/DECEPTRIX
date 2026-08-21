@@ -54,6 +54,8 @@ async def get_text_audit(audit_id: str, db: Session = Depends(get_db)):
     return TextAuditResponse(
         id=job.id,
         status=job.status,
+        progress=job.progress or 0,
+        current_step=job.current_step,
         extracted_claims=claims,
         audit_trail=evidence_events,
         report_links={

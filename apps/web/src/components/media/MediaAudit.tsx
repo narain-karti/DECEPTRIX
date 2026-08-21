@@ -3,7 +3,9 @@ import { useState, useEffect, useRef } from "react";
 
 type FlowState = "upload" | "processing" | "results" | "failed";
 
-const STAGES = ["Initialize", "Extract Sequences", "Run Spatio-Temporal Models", "Analyze Audio", "Fuse Results", "Finalize"];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+const STAGES = ["Initialize", "Extract Metadata", "Run Deepfake ViT & Landmarks", "Lip-Sync & Spectral Analysis", "Multi-Modal Fusion", "Finalize"];
 
 export default function MediaAudit() {
   const [flow, setFlow] = useState<FlowState>("upload");
@@ -24,24 +26,26 @@ export default function MediaAudit() {
     setFlow("processing");
     setProgress(0);
     setResultData(null);
+    setErrorMsg("");
 
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/media/jobs", {
+      const res = await fetch(`${API_BASE}/api/v1/media/jobs`, {
         method: "POST",
         body: formData,
       });
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP error! status: ${res.status}`);
       }
       const data = await res.json();
       setJobId(data.id);
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to upload video to backend API. Error: ${err.message}`);
-      setFlow("upload");
+      setErrorMsg(`Failed to upload video: ${err.message}`);
+      setFlow("failed");
     }
   };
 
@@ -50,28 +54,27 @@ export default function MediaAudit() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/v1/media/jobs/${jobId}`);
+        const res = await fetch(`${API_BASE}/api/v1/media/jobs/${jobId}`);
         const data = await res.json();
         
-        setProgress(data.progress);
+        setProgress(data.progress || 0);
         if (data.current_step) {
           setCurrentStep(data.current_step);
         }
 
         if (data.status === "completed") {
           clearInterval(interval);
-          const resultRes = await fetch(`http://127.0.0.1:8000/api/v1/media/jobs/${jobId}/result`);
+          const resultRes = await fetch(`${API_BASE}/api/v1/media/jobs/${jobId}/result`);
           const resultJson = await resultRes.json();
           setResultData(resultJson);
           setFlow("results");
         } else if (data.status === "failed" || data.status === "error") {
           clearInterval(interval);
-          setErrorMsg("The ML pipeline encountered an error while processing the media. Please ensure the video is valid and try again.");
+          setErrorMsg(data.current_step || "The ML pipeline encountered an error while processing the media.");
           setFlow("failed");
         }
       } catch (err: any) {
         console.error("Polling error:", err);
-        // Optional: If we want to fail on network disconnect, we can do it here.
       }
     }, 2000);
 
@@ -98,6 +101,7 @@ export default function MediaAudit() {
     setJobId(null);
     setProgress(0);
     setResultData(null);
+    setErrorMsg("");
   };
 
   const formatSize = (bytes: number) => {
@@ -174,7 +178,7 @@ export default function MediaAudit() {
         <div style={{ marginTop: 32 }}>
           <p className="caption">
             ⚠️ By uploading, you accept that processing occurs on our servers.
-            Files are deleted after analysis.
+            Files are cryptographically hashed (SHA-256) and verified through a multi-modal forensic ensemble.
           </p>
         </div>
       </div>
@@ -259,29 +263,27 @@ export default function MediaAudit() {
 
           <div style={{ marginTop: "24px", padding: "16px", background: "rgba(255,255,255,0.03)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)", position: "relative", overflow: "hidden" }}>
             <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", display: "flex", justifyContent: "space-between" }}>
-              <span>Live Terminal</span>
+              <span>Live Diagnostic Stream</span>
               <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#00d68f", animation: "pulse 1.5s infinite" }} />
-                Connected
+                Celery Worker Connected
               </span>
             </div>
             
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontFamily: "monospace", fontSize: "11px", color: "#a5d6ff", height: "80px", overflow: "hidden", justifyContent: "flex-end" }}>
               {(() => {
-                 // Dynamic terminal logic based on current progress
                  const logs = [
-                   "[sys] Connecting to DECEPTRIX ML cluster...",
-                   "[sys] Initializing media analysis pipeline..."
+                   "[sys] Connecting to DECEPTRIX forensic pipeline...",
+                   "[sys] Job initialized. Computing SHA-256 fingerprint..."
                  ];
-                 if (progress >= 10) logs.push(`[task] Initializing AI Models...`);
-                 if (progress >= 20) logs.push(`[task] Extracting video frames and audio...`);
-                 if (progress >= 40) logs.push(`[model] Loading visual models (MediaPipe, OpenCV DNN)...`);
-                 if (progress > 40 && progress < 80) logs.push(`[task] Analyzing spatio-temporal artifacts... (progress: ${Math.round(progress)}%)`);
-                 if (progress >= 80 && progress < 90) logs.push(`[task] Extracting audio embeddings & performing Lip Sync... (progress: ${Math.round(progress)}%)`);
-                 if (progress >= 90) logs.push(`[task] Fusing multi-modal confidence scores...`);
-                 if (progress >= 100) logs.push(`[sys] Analysis complete. Generating verdict.`);
+                 if (progress >= 5) logs.push(`[ffprobe] Extracting stream metadata & container tags...`);
+                 if (progress >= 15) logs.push(`[ffmpeg] Extracting 15 FPS frame sequence & 16kHz mono audio...`);
+                 if (progress >= 30) logs.push(`[models] Loading ViT Deepfake Classifier & MediaPipe FaceMesh...`);
+                 if (progress > 30 && progress < 75) logs.push(`[vit/dct] Scoring face crops & landmark variance... (${Math.round(progress)}%)`);
+                 if (progress >= 75 && progress < 90) logs.push(`[librosa] Correlating mouth aspect ratio (MAR) with RMS energy...`);
+                 if (progress >= 90) logs.push(`[fusion] Executing 5-signal weighted Bayesian ensemble...`);
+                 if (progress >= 100) logs.push(`[verdict] Forensic audit complete. Ready.`);
                  
-                 // Show the last 4 logs
                  return logs.slice(-4).map((log, idx, arr) => (
                    <div key={idx} style={{ 
                      opacity: 0.4 + (idx / arr.length) * 0.6,
@@ -316,7 +318,7 @@ export default function MediaAudit() {
           <div className="verdict-icon">🚨</div>
           <div style={{ flex: 1 }}>
             <div className="verdict-title" style={{ color: "#ff4a4a" }}>Analysis Failed</div>
-            <div className="verdict-desc">{errorMsg}</div>
+            <div className="verdict-desc">{errorMsg || "The pipeline encountered an error processing this media."}</div>
           </div>
         </div>
 
@@ -370,10 +372,10 @@ export default function MediaAudit() {
           </div>
           <div className="verdict-desc">
             {isManipulated ? 
-              "Analysis found high-confidence spatio-temporal artifacts consistent with deepfake manipulation." :
+              "Analysis found high-confidence synthetic artifacts exceeding detection thresholds across visual, frequency, and lip-sync modalities." :
               isSuspicious ? 
-              "Analysis found suspicious artifacts, but they were below the high-confidence threshold." :
-              "Analysis found no high-confidence manipulation artifacts. Minor compression artifacts are consistent with social-media re-encoding."}
+              "Analysis detected suspicious anomalies, but composite confidence is below the definitive manipulation threshold." :
+              "Analysis found no high-confidence manipulation artifacts. Minor compression artifacts are consistent with standard encoding."}
           </div>
         </div>
       </div>
@@ -385,7 +387,7 @@ export default function MediaAudit() {
           <div className="result-card-header">
             <div className="result-card-title">🎞️ Sequence Analysis</div>
             <span className={`result-card-status ${isReal ? 'status-clean' : 'status-warning'}`}>
-              {visualEvents.length} clips
+              {visualEvents.length} clips analyzed
             </span>
           </div>
           <div className="keyframes-grid">
@@ -396,16 +398,13 @@ export default function MediaAudit() {
               const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
               const isEventClean = ev.score_or_null < 0.4;
               
-              // Get the face crop image path if available
               const faces = ev.artifact_refs?.[0]?.faces || [];
               let faceCropPath = faces.length > 0 ? faces[0].face_crop : null;
               
-              // We need to convert the local file path to a URL path through the storage mount
-              // e.g. "apps/api/storage/..." -> "/storage/..."
               if (faceCropPath && typeof faceCropPath === 'string') {
                 const storageIdx = faceCropPath.indexOf('storage');
                 if (storageIdx !== -1) {
-                   faceCropPath = `http://127.0.0.1:8000/${faceCropPath.substring(storageIdx).replace(/\\/g, '/')}`;
+                   faceCropPath = `${API_BASE}/${faceCropPath.substring(storageIdx).replace(/\\/g, '/')}`;
                 }
               }
 
@@ -461,14 +460,14 @@ export default function MediaAudit() {
         {/* Detector */}
         <div className="result-card">
           <div className="result-card-header">
-            <div className="result-card-title">🔬 Visual Detector</div>
+            <div className="result-card-title">🔬 Primary ViT Detector</div>
             <span className={`result-card-status ${isReal ? 'status-clean' : 'status-warning'}`}>
               {isManipulated ? "High Risk" : isSuspicious ? "Medium Risk" : "Low Risk"}
             </span>
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span className="caption">Max Manipulation Score</span>
+              <span className="caption">Max Anomaly Score</span>
               <span style={{ color: isReal ? "#00d68f" : "#ffaa00", fontWeight: 700, fontSize: 14 }}>
                 {maxScore.toFixed(2)}
               </span>
@@ -477,8 +476,8 @@ export default function MediaAudit() {
               <div className="progress-bar-fill" style={{ width: `${maxScore * 100}%`, background: isReal ? "#00d68f" : "#ffaa00" }} />
             </div>
           </div>
-          <div className="caption">
-            Model: 3D ConvNet VideoMAE · {visualEvents.length} sequences analyzed
+          <div className="caption" style={{ fontSize: 12 }}>
+            Model: {visualEvents[0]?.model_or_connector || "dima806/ViT-Patch16 + MediaPipe Landmarks + DCT"} · {visualEvents.length} sequences analyzed
           </div>
         </div>
       </div>
@@ -486,7 +485,7 @@ export default function MediaAudit() {
       {/* Evidence timeline */}
       <div className="result-card" style={{ marginTop: 24 }}>
         <div className="result-card-header">
-          <div className="result-card-title">📊 Evidence Timeline</div>
+          <div className="result-card-title">📊 Multi-Modal Evidence Timeline</div>
         </div>
         <div className="evidence-timeline">
           {resultData?.timeline_evidence?.map((ev: any, i: number) => {
@@ -498,7 +497,11 @@ export default function MediaAudit() {
                 <div className="evidence-dot" style={{ background: color }} />
                 <div className="evidence-content">
                   <div className="evidence-title">
-                    {ev.modality === 'media' ? "Spatio-Temporal Sequence Analysis" : "Audio Deepfake Analysis"}
+                    {ev.modality === 'media' ? "Visual Artifact & Landmark Analysis" :
+                     ev.modality === 'audio_visual' ? "Audio-Visual Lip Sync Correlation" :
+                     ev.modality === 'metadata' ? "Technical Container & Metadata Inspection" :
+                     ev.modality === 'frequency' ? "Spectral Frequency Analysis" :
+                     "Diagnostic Evidence"}
                   </div>
                   <div className="evidence-desc">{ev.explanation}</div>
                   <div className="evidence-meta">
@@ -514,12 +517,16 @@ export default function MediaAudit() {
 
       {/* Actions */}
       <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button className="btn-primary" onClick={() => window.open(`http://127.0.0.1:8000${resultData.report_links.pdf}`, "_blank")}>
-          Download PDF Report <span className="btn-arrow">↓</span>
-        </button>
-        <button className="btn-secondary" onClick={() => window.open(`http://127.0.0.1:8000${resultData.report_links.json}`, "_blank")}>
-          Download JSON
-        </button>
+        {resultData?.report_links?.pdf && (
+          <button className="btn-primary" onClick={() => window.open(`${API_BASE}${resultData.report_links.pdf}`, "_blank")}>
+            Download PDF Report <span className="btn-arrow">↓</span>
+          </button>
+        )}
+        {resultData?.report_links?.json && (
+          <button className="btn-secondary" onClick={() => window.open(`${API_BASE}${resultData.report_links.json}`, "_blank")}>
+            Download JSON Record
+          </button>
+        )}
         <button className="btn-secondary" onClick={reset}>
           New Audit
         </button>

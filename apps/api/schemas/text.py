@@ -15,6 +15,8 @@ class ClaimItem(BaseModel):
 class TextAuditResponse(BaseModel):
     id: str
     status: str
+    progress: int = 0
+    current_step: Optional[str] = None
     extracted_claims: List[ClaimItem] = []
     audit_trail: List[EvidenceEvent] = []
     report_links: Optional[dict] = None

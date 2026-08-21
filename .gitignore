@@ -34,3 +34,7 @@ apps/api/models/cv2_dnn/
 *.mp4
 *.caffemodel
 *.prototxt
+*.pdf
+test-results/
+test_output*
+

@@ -1,119 +1,134 @@
 "use client";
 import { useState, useEffect } from "react";
 
-type FlowState = "input" | "extracting" | "researching" | "results";
+type FlowState = "input" | "processing" | "results" | "failed";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 const DEMO_TEXT = `BREAKING: Government has announced that Aadhaar card will be mandatory for all bank transactions starting January 2027. RBI has issued circular. All accounts without Aadhaar will be frozen. Also, new digital rupee will replace cash completely by March 2027. Share with everyone before it's too late!`;
 
-const MOCK_CLAIMS = [
-  {
-    id: 1,
-    text: "Aadhaar card will be mandatory for all bank transactions starting January 2027",
-    domain: "Government Policy",
-    selected: true,
-  },
-  {
-    id: 2,
-    text: "RBI has issued a circular mandating Aadhaar for bank transactions",
-    domain: "Financial Regulation",
-    selected: true,
-  },
-  {
-    id: 3,
-    text: "Bank accounts without Aadhaar will be frozen",
-    domain: "Financial Regulation",
-    selected: true,
-  },
-  {
-    id: 4,
-    text: "Digital rupee will replace cash completely by March 2027",
-    domain: "Government Policy",
-    selected: false,
-  },
-];
+interface Citation {
+  url: string;
+  title: string;
+  snippet: string;
+  tier: number;
+}
 
-const MOCK_SOURCES = [
-  {
-    name: "PIB Fact Check",
-    tier: 2,
-    tierLabel: "Official Fact-Check",
-    passage:
-      "The claim that Aadhaar is mandatory for all bank transactions is misleading. RBI has clarified that Aadhaar-based KYC is one of several accepted verification methods. No circular mandating exclusive Aadhaar use has been issued.",
-    date: "August 2026",
-    url: "pib.gov.in/factcheck",
-    verdict: "contradicted",
-  },
-  {
-    name: "Reserve Bank of India",
-    tier: 1,
-    tierLabel: "Primary Authority",
-    passage:
-      "KYC norms allow multiple forms of officially valid documents including Aadhaar, PAN, Voter ID, Driving Licence, and Passport. No single document is mandated as the exclusive requirement.",
-    date: "July 2026",
-    url: "rbi.org.in/scripts/BS_CircularIndexDisplay.aspx",
-    verdict: "contradicted",
-  },
-  {
-    name: "Google Fact Check",
-    tier: 2,
-    tierLabel: "Official Fact-Check",
-    passage:
-      "Multiple fact-checkers have rated similar claims as False. The digital rupee (e-₹) pilot is ongoing but no timeline for cash replacement has been announced by RBI or the Government.",
-    date: "August 2026",
-    url: "toolbox.google.com/factcheck",
-    verdict: "contradicted",
-  },
-  {
-    name: "Economic Times",
-    tier: 3,
-    tierLabel: "Discovery",
-    passage:
-      "RBI Governor stated that the digital rupee pilot continues in select cities. Cash remains legal tender with no plans for discontinuation.",
-    date: "August 14, 2026",
-    url: "economictimes.com",
-    verdict: "context",
-  },
-];
+interface ClaimItem {
+  claim_id: string;
+  text: string;
+  outcome: "Supported" | "Contradicted" | "Unsupported";
+  citations: Citation[];
+}
+
+interface TextAuditResult {
+  id: string;
+  status: string;
+  progress: number;
+  current_step?: string;
+  extracted_claims: ClaimItem[];
+  audit_trail: any[];
+  report_links?: {
+    json?: string;
+    pdf?: string;
+  };
+}
 
 export default function RumourAudit() {
   const [flow, setFlow] = useState<FlowState>("input");
   const [text, setText] = useState("");
-  const [claims, setClaims] = useState(MOCK_CLAIMS);
-  const [researchStep, setResearchStep] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState("Initializing text audit...");
+  const [resultData, setResultData] = useState<TextAuditResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const handleExtract = () => {
+  const startAudit = async () => {
     if (text.trim().length < 10) return;
-    setFlow("extracting");
-    setTimeout(() => setFlow("researching"), 1800);
+    setFlow("processing");
+    setProgress(5);
+    setCurrentStep("Submitting text to audit pipeline...");
+    setResultData(null);
+    setErrorMsg("");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/text/audits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const data = await res.json();
+      setJobId(data.id);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(`Failed to submit text for audit: ${err.message}`);
+      setFlow("failed");
+    }
   };
 
   useEffect(() => {
-    if (flow !== "researching") return;
-    if (researchStep >= MOCK_SOURCES.length) {
-      setTimeout(() => setFlow("results"), 600);
-      return;
-    }
-    const timer = setTimeout(
-      () => setResearchStep((p) => p + 1),
-      600 + Math.random() * 400
-    );
-    return () => clearTimeout(timer);
-  }, [flow, researchStep]);
+    if (flow !== "processing" || !jobId) return;
 
-  const toggleClaim = (id: number) => {
-    setClaims((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, selected: !c.selected } : c))
-    );
-  };
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/text/audits/${jobId}`);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const data: TextAuditResult = await res.json();
+
+        setProgress(data.progress || 0);
+        if (data.current_step) {
+          setCurrentStep(data.current_step);
+        }
+
+        if (data.status === "completed") {
+          clearInterval(interval);
+          setResultData(data);
+          setFlow("results");
+        } else if (data.status === "failed" || data.status === "error") {
+          clearInterval(interval);
+          setErrorMsg(data.current_step || "The text audit pipeline encountered an error.");
+          setFlow("failed");
+        }
+      } catch (err: any) {
+        console.error("Polling error:", err);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [flow, jobId]);
 
   const reset = () => {
     setFlow("input");
     setText("");
-    setClaims(MOCK_CLAIMS);
-    setResearchStep(0);
+    setJobId(null);
+    setProgress(0);
+    setResultData(null);
+    setErrorMsg("");
   };
 
-  const tierClass = (t: number) => `tier-${t}`;
+  const getTierLabel = (tier: number) => {
+    switch (tier) {
+      case 1:
+        return "T1 · Primary Authority";
+      case 2:
+        return "T2 · Official Fact-Check";
+      default:
+        return "T3 · Discovery";
+    }
+  };
+
+  const getOverallVerdict = () => {
+    if (!resultData?.extracted_claims?.length) return "Unsupported";
+    const outcomes = resultData.extracted_claims.map((c) => c.outcome);
+    if (outcomes.includes("Contradicted")) return "Contradicted";
+    if (outcomes.includes("Supported")) return "Supported";
+    return "Unsupported";
+  };
 
   /* ------ INPUT STATE ------ */
   if (flow === "input") {
@@ -121,7 +136,6 @@ export default function RumourAudit() {
       <div>
         <div className="flow-step-nav">
           <div className="flow-step-dot active" />
-          <div className="flow-step-dot" />
           <div className="flow-step-dot" />
           <div className="flow-step-dot" />
           <span className="flow-step-label">Paste Claim</span>
@@ -148,226 +162,238 @@ export default function RumourAudit() {
         <div style={{ marginTop: 20 }}>
           <button
             className="btn-primary"
-            onClick={handleExtract}
+            onClick={startAudit}
+            disabled={text.trim().length < 10}
             style={{ opacity: text.trim().length < 10 ? 0.4 : 1 }}
           >
-            Extract Claims <span className="btn-arrow">→</span>
+            Extract & Audit Claims <span className="btn-arrow">→</span>
           </button>
         </div>
 
         <div style={{ marginTop: 24 }}>
           <p className="caption">
-            ⚠️ Do not paste personal or sensitive information. DECEPTRIX does
-            not store text after analysis. Claims are processed in English.
+            ⚠️ Do not paste personal or sensitive information. DECEPTRIX connects
+            to live search engines and NLI entailment models to cross-reference claims against authoritative sources.
           </p>
         </div>
       </div>
     );
   }
 
-  /* ------ EXTRACTING STATE ------ */
-  if (flow === "extracting") {
+  /* ------ PROCESSING STATE ------ */
+  if (flow === "processing") {
     return (
       <div>
         <div className="flow-step-nav">
           <div className="flow-step-dot completed" />
           <div className="flow-step-dot active" />
           <div className="flow-step-dot" />
-          <div className="flow-step-dot" />
-          <span className="flow-step-label">Extracting Claims...</span>
+          <span className="flow-step-label">Analyzing & Researching...</span>
         </div>
 
         <div className="text-input-area" style={{ opacity: 0.5 }}>
-          <div style={{ fontSize: 14, color: "#8a8a8a", whiteSpace: "pre-wrap" }}>
+          <div style={{ fontSize: 14, color: "var(--text-secondary)", whiteSpace: "pre-wrap" }}>
             {text}
           </div>
         </div>
 
-        <div style={{ textAlign: "center", marginTop: 48 }}>
-          <div style={{ fontSize: 40, marginBottom: 16, animation: "pulse 1.5s infinite" }}>
-            🧠
+        <div style={{ textAlign: "center", marginTop: 40 }}>
+          <div style={{ fontSize: 42, marginBottom: 16, animation: "pulse 1.5s infinite" }}>
+            🔍
           </div>
-          <div className="h4">Extracting atomic claims...</div>
+          <div className="h4">{currentStep}</div>
           <p className="caption" style={{ marginTop: 8 }}>
-            Breaking down the text into specific, checkable assertions
+            Running real-time source retrieval and NLI entailment classification
           </p>
+        </div>
+
+        <div style={{ marginTop: 32, maxWidth: 600, marginInline: "auto" }}>
+          <div className="progress-bar-track">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${progress}%`, transition: "width 0.3s ease" }}
+            />
+          </div>
+          <div className="progress-status" style={{ marginTop: 8, display: "flex", justifyContent: "space-between" }}>
+            <span className="progress-status-text" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+              {currentStep}
+            </span>
+            <span className="progress-status-percent" style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>
+              {progress}%
+            </span>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* ------ RESEARCHING STATE ------ */
-  if (flow === "researching") {
+  /* ------ FAILED STATE ------ */
+  if (flow === "failed") {
     return (
-      <div>
-        <div className="flow-step-nav">
-          <div className="flow-step-dot completed" />
-          <div className="flow-step-dot completed" />
-          <div className="flow-step-dot active" />
-          <div className="flow-step-dot" />
-          <span className="flow-step-label">Researching Sources...</span>
+      <div style={{ textAlign: "center", padding: "48px 0" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+        <div className="h4" style={{ color: "#ff4d4d", marginBottom: 12 }}>
+          Audit Failed
         </div>
-
-        <div className="claims-section">
-          <div className="claims-header">
-            <h3 className="h4">
-              Extracted Claims ({claims.filter((c) => c.selected).length} selected)
-            </h3>
-          </div>
-          {claims.map((claim) => (
-            <div
-              className={`claim-card${claim.selected ? " selected" : ""}`}
-              key={claim.id}
-              onClick={() => toggleClaim(claim.id)}
-            >
-              <div className="claim-checkbox">
-                {claim.selected ? "✓" : ""}
-              </div>
-              <div>
-                <div className="claim-number">Claim #{claim.id}</div>
-                <div className="claim-text">{claim.text}</div>
-                <div className="claim-domain">
-                  <span className="pill-outline" style={{ fontSize: 11 }}>
-                    {claim.domain}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 32 }}>
-          <div className="h4" style={{ marginBottom: 16 }}>
-            🔍 Searching sources...
-          </div>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{ width: `${(researchStep / MOCK_SOURCES.length) * 100}%` }}
-            />
-          </div>
-          <div className="progress-status" style={{ marginTop: 8 }}>
-            <span className="progress-status-text">
-              {researchStep < MOCK_SOURCES.length
-                ? `Querying: ${MOCK_SOURCES[researchStep].name}...`
-                : "Composing audit..."}
-            </span>
-            <span className="progress-status-percent">
-              {Math.round((researchStep / MOCK_SOURCES.length) * 100)}%
-            </span>
-          </div>
-        </div>
+        <p className="caption" style={{ maxWidth: 500, margin: "0 auto 24px" }}>
+          {errorMsg || "An error occurred during text claim extraction and retrieval."}
+        </p>
+        <button className="btn-primary" onClick={reset}>
+          Try Again
+        </button>
       </div>
     );
   }
 
   /* ------ RESULTS STATE ------ */
+  const overallVerdict = getOverallVerdict();
+  const claims = resultData?.extracted_claims || [];
+  const allCitations: Citation[] = [];
+  claims.forEach((c) => {
+    (c.citations || []).forEach((cit) => {
+      if (!allCitations.some((existing) => existing.url === cit.url)) {
+        allCitations.push(cit);
+      }
+    });
+  });
+
   return (
     <div>
       <div className="flow-step-nav">
-        <div className="flow-step-dot completed" />
         <div className="flow-step-dot completed" />
         <div className="flow-step-dot completed" />
         <div className="flow-step-dot active" />
         <span className="flow-step-label">Audit Results</span>
       </div>
 
-      {/* Outcome */}
-      <div className="outcome-card outcome-contradicted">
-        <div className="outcome-label">
-          <span>❌</span> Contradicted by Authoritative Sources
+      {/* Outcome Banner */}
+      {overallVerdict === "Contradicted" && (
+        <div className="outcome-card outcome-contradicted">
+          <div className="outcome-label">
+            <span>❌</span> Contradicted by Authoritative Sources
+          </div>
+          <div className="outcome-desc">
+            One or more assertions in this text are contradicted by retrieved authoritative evidence.
+            Cross-referencing against verified sources shows factual inconsistencies.
+          </div>
         </div>
-        <div className="outcome-desc">
-          The core claims in this message are contradicted by official
-          statements from RBI and PIB Fact Check. No RBI circular mandating
-          exclusive Aadhaar use exists. No timeline for cash replacement has
-          been announced.
-        </div>
-      </div>
+      )}
 
-      {/* Claims with outcomes */}
+      {overallVerdict === "Supported" && (
+        <div className="outcome-card" style={{ background: "rgba(46, 213, 115, 0.1)", border: "1px solid rgba(46, 213, 115, 0.3)", borderRadius: "var(--radius-md)", padding: 24 }}>
+          <div className="outcome-label" style={{ color: "#2ed573", fontWeight: 700, fontSize: 18, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>✅</span> Supported by Available Evidence
+          </div>
+          <div className="outcome-desc" style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+            Claims in this message align with available public domain reporting and official sources.
+          </div>
+        </div>
+      )}
+
+      {overallVerdict === "Unsupported" && (
+        <div className="outcome-card" style={{ background: "rgba(255, 171, 0, 0.1)", border: "1px solid rgba(255, 171, 0, 0.3)", borderRadius: "var(--radius-md)", padding: 24 }}>
+          <div className="outcome-label" style={{ color: "#ffab00", fontWeight: 700, fontSize: 18, marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>⚠️</span> Inconclusive / Unsupported
+          </div>
+          <div className="outcome-desc" style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+            Insufficient authoritative evidence found to definitively confirm or refute the extracted claims at this time.
+          </div>
+        </div>
+      )}
+
+      {/* Claim-Level Outcomes */}
       <div className="claims-section" style={{ marginTop: 32 }}>
         <h3 className="h4" style={{ marginBottom: 16 }}>
-          Claim-Level Outcomes
+          Atomic Claim Analysis ({claims.length} claim{claims.length !== 1 ? "s" : ""})
         </h3>
-        {claims
-          .filter((c) => c.selected)
-          .map((claim, i) => (
-            <div className="claim-card selected" key={claim.id}>
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span className="claim-number">Claim #{claim.id}</span>
-                  <span
-                    className="tier-badge"
-                    style={{
-                      background: "rgba(255,77,77,0.15)",
-                      color: "#ff4d4d",
-                    }}
-                  >
-                    Contradicted
-                  </span>
-                </div>
-                <div className="claim-text">{claim.text}</div>
-              </div>
-            </div>
-          ))}
-      </div>
-
-      {/* Source cards */}
-      <div className="source-cards" style={{ marginTop: 32 }}>
-        <h3 className="h4" style={{ marginBottom: 16 }}>
-          📚 Source Evidence
-        </h3>
-        {MOCK_SOURCES.map((src, i) => (
-          <div className={`source-card tier-${src.tier}-border`} key={i}>
-            <div className="source-card-header">
-              <div className="source-name">
-                <span>
-                  {src.tier === 1 ? "🏛️" : src.tier === 2 ? "✅" : "📰"}
+        {claims.map((claim, idx) => (
+          <div className="claim-card selected" key={claim.claim_id || idx} style={{ marginBottom: 12 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                <span className="claim-number">Claim #{idx + 1}</span>
+                <span
+                  className="tier-badge"
+                  style={{
+                    background:
+                      claim.outcome === "Contradicted"
+                        ? "rgba(255,77,77,0.15)"
+                        : claim.outcome === "Supported"
+                        ? "rgba(46,213,115,0.15)"
+                        : "rgba(255,171,0,0.15)",
+                    color:
+                      claim.outcome === "Contradicted"
+                        ? "#ff4d4d"
+                        : claim.outcome === "Supported"
+                        ? "#2ed573"
+                        : "#ffab00",
+                  }}
+                >
+                  {claim.outcome}
                 </span>
-                {src.name}
+                <span className="pill-outline" style={{ fontSize: 11 }}>
+                  {claim.citations?.length || 0} Source{claim.citations?.length !== 1 ? "s" : ""}
+                </span>
               </div>
-              <span className={`tier-badge ${tierClass(src.tier)}`}>
-                T{src.tier} · {src.tierLabel}
-              </span>
-            </div>
-            <div className="source-passage">{src.passage}</div>
-            <div className="source-meta">
-              <span className="source-meta-item">📅 {src.date}</span>
-              <span className="source-meta-item">🔗 {src.url}</span>
-              <span className="source-meta-item">
-                {src.verdict === "contradicted"
-                  ? "❌ Contradicts claim"
-                  : "ℹ️ Provides context"}
-              </span>
+              <div className="claim-text" style={{ fontSize: 15, lineHeight: 1.5 }}>
+                {claim.text}
+              </div>
             </div>
           </div>
         ))}
       </div>
 
+      {/* Retrieved Sources */}
+      <div className="source-cards" style={{ marginTop: 32 }}>
+        <h3 className="h4" style={{ marginBottom: 16 }}>
+          📚 Retrieved Source Evidence ({allCitations.length})
+        </h3>
+        {allCitations.length === 0 ? (
+          <p className="caption">No external sources retrieved during this audit window.</p>
+        ) : (
+          allCitations.map((src, i) => (
+            <div className={`source-card tier-${src.tier}-border`} key={i} style={{ marginBottom: 16 }}>
+              <div className="source-card-header">
+                <div className="source-name" style={{ fontWeight: 600 }}>
+                  <span>{src.tier === 1 ? "🏛️" : src.tier === 2 ? "✅" : "📰"}</span>
+                  {src.title || src.url}
+                </div>
+                <span className={`tier-badge tier-${src.tier}`}>
+                  {getTierLabel(src.tier)}
+                </span>
+              </div>
+              <div className="source-passage" style={{ margin: "10px 0", fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                "{src.snippet}"
+              </div>
+              <div className="source-meta" style={{ display: "flex", gap: 16, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
+                <a
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--accent)", textDecoration: "underline" }}
+                >
+                  🔗 {src.url.length > 50 ? src.url.slice(0, 50) + "..." : src.url}
+                </a>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
       {/* What this does NOT prove */}
-      <div className="not-prove">
+      <div className="not-prove" style={{ marginTop: 32 }}>
         <div className="not-prove-title">⚠️ What this audit does NOT prove</div>
         <ul>
           <li>
-            This audit does not guarantee that no Aadhaar-related policy change
-            will ever be introduced
+            Source coverage is bounded by the connectors queried at audit time.
           </li>
           <li>
-            Source coverage is bounded by the connectors queried at audit time
-            (August 2026)
+            Results apply to the specific extracted claims, not to the entire unstructured message context.
           </li>
           <li>
-            Results apply to the specific extracted claims, not to the entire
-            pasted message
+            Search results from Tier 3 discovery sources are informative leads, not sole evidentiary proof.
           </li>
           <li>
-            Search results from Tier 3 sources are leads, not evidence — they
-            cannot alone determine the audit outcome
-          </li>
-          <li>
-            This audit is not a legal determination and should not be cited as
-            one
+            This audit is an automated forensic check and does not constitute a legal verdict.
           </li>
         </ul>
       </div>
@@ -379,14 +405,14 @@ export default function RumourAudit() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 24px" }}>
           {[
-            ["Audit ID", "RA-2026-08-20-X7K9"],
-            ["Timestamp", "2026-08-20T11:00:00Z"],
-            ["Claims Analyzed", "3 of 4"],
-            ["Sources Queried", "4"],
-            ["Pipeline Version", "0.1.0-mvp"],
-            ["Policy Pack", "gov_in_v1"],
-            ["Language", "English"],
-            ["Search Bounded", "Yes"],
+            ["Audit ID", resultData?.id || "N/A"],
+            ["Modality", "Text & Rumour Cross-Verification"],
+            ["Claims Analyzed", `${claims.length}`],
+            ["Sources Retrieved", `${allCitations.length}`],
+            ["Pipeline Version", "DECEPTRIX v2.0-NLI"],
+            ["NLI Entailment Model", "BART-Large-MNLI (Zero-Shot)"],
+            ["Search Engine", "DuckDuckGo Live Search API"],
+            ["Status", resultData?.status || "completed"],
           ].map(([k, v]) => (
             <div key={k} style={{ padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
               <div className="caption" style={{ marginBottom: 2 }}>{k}</div>
@@ -398,10 +424,26 @@ export default function RumourAudit() {
 
       {/* Actions */}
       <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button className="btn-primary" onClick={() => alert("Downloading HTML report...")}>
-          Download Report <span className="btn-arrow">↓</span>
-        </button>
-        <button className="btn-secondary" onClick={() => alert("Downloading JSON...")}>Download JSON</button>
+        {jobId && (
+          <>
+            <a
+              href={`${API_BASE}/api/v1/reports/${jobId}.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+            >
+              Download PDF Report <span className="btn-arrow">↓</span>
+            </a>
+            <a
+              href={`${API_BASE}/api/v1/reports/${jobId}.json`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary"
+            >
+              Download JSON Record
+            </a>
+          </>
+        )}
         <button className="btn-secondary" onClick={reset}>
           New Audit
         </button>
