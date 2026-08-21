@@ -63,8 +63,13 @@ async def create_media_job(
     db.commit()
     db.refresh(job)
 
-    # Dispatch to Celery worker (not in-process)
-    process_media_job.delay(job_id)
+    # Guaranteed execution: dispatch via Celery eager/worker, with background thread fallback
+    try:
+        process_media_job.delay(job_id)
+    except Exception as e:
+        import threading
+        print(f"Celery dispatch failed ({e}), falling back to background thread...")
+        threading.Thread(target=process_media_job, args=(job_id,), daemon=True).start()
 
     return MediaJobResponse(
         id=job.id,

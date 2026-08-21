@@ -185,10 +185,14 @@ def process_media_job(job_id: str):
             created_at=datetime.datetime.utcnow()
         ))
 
-        # Store metadata in report_data for PDF
+        # Store metadata in report_data and evidence for live frontend polling
         job.report_data = {"metadata": metadata}
+        job.evidence = [e.model_dump(mode='json') for e in frame_events]
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(job, "report_data")
+        flag_modified(job, "evidence")
         job.progress = 15
-        job.current_step = "Extracting video frames and audio..."
+        job.current_step = "Extracting video frames and audio (15 FPS)..."
         db.commit()
 
         # -- Step 2: Frame & Audio Extraction --
@@ -362,6 +366,8 @@ def process_media_job(job_id: str):
 
                 # Commit progressive evidence so frontend can display live face extractions
                 job.evidence = [e.model_dump(mode='json') for e in frame_events]
+                from sqlalchemy.orm.attributes import flag_modified
+                flag_modified(job, "evidence")
                 db.commit()
 
         # -- Step 4: Lip Sync Analysis --

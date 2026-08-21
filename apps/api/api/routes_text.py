@@ -27,8 +27,12 @@ async def create_text_audit(
     db.add(job)
     db.commit()
     db.refresh(job)
-    
-    process_text_audit.delay(job_id)
+    try:
+        process_text_audit.delay(job_id)
+    except Exception as e:
+        import threading
+        print(f"Celery text dispatch failed ({e}), running in background thread...")
+        threading.Thread(target=process_text_audit, args=(job_id,), daemon=True).start()
     
     return TextAuditResponse(
         id=job.id,

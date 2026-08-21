@@ -30,13 +30,14 @@ export default function MediaAudit() {
   const [selectedFace, setSelectedFace] = useState<{ face: FaceRef; timeStr: string; event: any } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Derive stage index from backend progress (0-100)
-  const stageIdx = progress === 0 ? 0 : Math.min(Math.floor((progress / 100) * STAGES.length), STAGES.length - 1);
+  // Derive stage index dynamically based on fine-grained progress thresholds
+  const stageIdx = progress < 15 ? 0 : progress < 30 ? 1 : progress < 65 ? 2 : progress < 85 ? 3 : progress < 98 ? 4 : 5;
 
   const startProcessing = async () => {
     if (!file) return;
     setFlow("processing");
-    setProgress(0);
+    setProgress(5);
+    setCurrentStep("Initializing forensic pipeline...");
     setResultData(null);
     setLiveEvidence([]);
     setLiveReportData(null);
@@ -56,6 +57,8 @@ export default function MediaAudit() {
       }
       const data = await res.json();
       setJobId(data.id);
+      if (data.progress) setProgress(data.progress);
+      if (data.current_step) setCurrentStep(data.current_step);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(`Failed to upload video: ${err.message}`);
@@ -66,12 +69,18 @@ export default function MediaAudit() {
   useEffect(() => {
     if (flow !== "processing" || !jobId) return;
 
-    const interval = setInterval(async () => {
+    let isMounted = true;
+
+    const poll = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/v1/media/jobs/${jobId}`);
+        if (!res.ok) return;
         const data = await res.json();
-        
-        setProgress(data.progress || 0);
+        if (!isMounted) return;
+
+        if (typeof data.progress === "number") {
+          setProgress(data.progress);
+        }
         if (data.current_step) {
           setCurrentStep(data.current_step);
         }
@@ -85,22 +94,29 @@ export default function MediaAudit() {
         }
 
         if (data.status === "completed") {
-          clearInterval(interval);
           const resultRes = await fetch(`${API_BASE}/api/v1/media/jobs/${jobId}/result`);
           const resultJson = await resultRes.json();
-          setResultData(resultJson);
-          setFlow("results");
+          if (isMounted) {
+            setResultData(resultJson);
+            setFlow("results");
+          }
         } else if (data.status === "failed" || data.status === "error") {
-          clearInterval(interval);
-          setErrorMsg(data.current_step || "The ML pipeline encountered an error while processing the media.");
-          setFlow("failed");
+          if (isMounted) {
+            setErrorMsg(data.current_step || "The ML pipeline encountered an error while processing the media.");
+            setFlow("failed");
+          }
         }
       } catch (err: any) {
         console.error("Polling error:", err);
       }
-    }, 1200);
+    };
+
+    // Immediate first poll
+    poll();
+    const interval = setInterval(poll, 750);
 
     return () => {
+      isMounted = false;
       clearInterval(interval);
     };
   }, [flow, jobId]);
@@ -220,7 +236,18 @@ export default function MediaAudit() {
 
   /* ------ PROCESSING STATE (LIVELY STREAMING HUD) ------ */
   if (flow === "processing") {
-    const liveFaces = liveEvidence.filter(e => e.artifact_refs?.[0]?.faces?.length > 0);
+    const liveFaces = liveEvidence.flatMap((ev: any) => {
+      const refs = ev.artifact_refs || [];
+      return refs.flatMap((ref: any) => {
+        const faces = ref.faces || [];
+        return faces.map((face: any) => ({
+          event: ev,
+          faceObj: face,
+          timestamp_sec: ref.timestamp_sec || 0,
+          timeStr: `${Math.floor((ref.timestamp_sec || 0) / 60)}:${((ref.timestamp_sec || 0) % 60).toString().padStart(2, '0')}`
+        }));
+      });
+    });
     const meta = liveReportData?.metadata || {};
 
     return (
@@ -403,13 +430,8 @@ export default function MediaAudit() {
                   scrollBehavior: "smooth"
                 }}
               >
-                {liveFaces.map((ev, idx) => {
-                  const time = ev.artifact_refs?.[0]?.timestamp_sec || 0;
-                  const mins = Math.floor(time / 60);
-                  const secs = time % 60;
-                  const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
-                  const faces = ev.artifact_refs?.[0]?.faces || [];
-                  const faceObj = faces.length > 0 ? faces[0] : null;
+                {liveFaces.map((item, idx) => {
+                  const { faceObj, timeStr, event } = item;
                   const cropUrl = resolveStorageUrl(faceObj?.face_crop);
                   const fakeProb = faceObj?.fake_score ?? 0;
                   const isFake = fakeProb > 0.5;
@@ -417,7 +439,7 @@ export default function MediaAudit() {
                   return (
                     <div 
                       key={idx}
-                      onClick={() => faceObj && setSelectedFace({ face: faceObj, timeStr, event: ev })}
+                      onClick={() => faceObj && setSelectedFace({ face: faceObj, timeStr, event })}
                       style={{
                         minWidth: "128px",
                         background: "#131416",
