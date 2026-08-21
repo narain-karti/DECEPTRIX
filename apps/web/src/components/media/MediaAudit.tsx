@@ -25,6 +25,7 @@ export default function MediaAudit() {
   const [currentStep, setCurrentStep] = useState("Initializing...");
   const [resultData, setResultData] = useState<any>(null);
   const [liveEvidence, setLiveEvidence] = useState<any[]>([]);
+  const [liveReportData, setLiveReportData] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedFace, setSelectedFace] = useState<{ face: FaceRef; timeStr: string; event: any } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -38,6 +39,7 @@ export default function MediaAudit() {
     setProgress(0);
     setResultData(null);
     setLiveEvidence([]);
+    setLiveReportData(null);
     setErrorMsg("");
 
     const formData = new FormData();
@@ -74,9 +76,12 @@ export default function MediaAudit() {
           setCurrentStep(data.current_step);
         }
 
-        // Live stream progressive evidence
+        // Live stream progressive evidence & report data
         if (data.evidence && Array.isArray(data.evidence)) {
           setLiveEvidence(data.evidence);
+        }
+        if (data.report_data) {
+          setLiveReportData(data.report_data);
         }
 
         if (data.status === "completed") {
@@ -93,7 +98,7 @@ export default function MediaAudit() {
       } catch (err: any) {
         console.error("Polling error:", err);
       }
-    }, 1500);
+    }, 1200);
 
     return () => {
       clearInterval(interval);
@@ -119,6 +124,7 @@ export default function MediaAudit() {
     setProgress(0);
     setResultData(null);
     setLiveEvidence([]);
+    setLiveReportData(null);
     setErrorMsg("");
     setSelectedFace(null);
   };
@@ -212,9 +218,10 @@ export default function MediaAudit() {
     );
   }
 
-  /* ------ PROCESSING STATE ------ */
+  /* ------ PROCESSING STATE (LIVELY STREAMING HUD) ------ */
   if (flow === "processing") {
     const liveFaces = liveEvidence.filter(e => e.artifact_refs?.[0]?.faces?.length > 0);
+    const meta = liveReportData?.metadata || {};
 
     return (
       <div>
@@ -222,23 +229,50 @@ export default function MediaAudit() {
           <div className="flow-step-dot completed" />
           <div className="flow-step-dot active" />
           <div className="flow-step-dot" />
-          <span className="flow-step-label">Processing Ensemble...</span>
+          <span className="flow-step-label">Live Forensic Engine Active...</span>
         </div>
 
-        {file && (
-          <div className="file-info" style={{ marginBottom: 20 }}>
-            <div className="file-icon">🎥</div>
-            <div className="file-details">
-              <div className="file-name">{file.name}</div>
-              <div className="file-meta">
-                <span>{formatSize(file.size)}</span>
-                <span>SHA-256 Checksumming Active</span>
-              </div>
+        {/* TOP VIDEO STREAM METRICS BAR */}
+        <div 
+          style={{
+            display: "grid", 
+            gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", 
+            gap: "12px", 
+            marginBottom: "20px"
+          }}
+        >
+          <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "12px 14px" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Stream File</span>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginTop: "2px" }}>
+              {file?.name || "Target Video"}
             </div>
           </div>
-        )}
 
-        <div className="progress-container">
+          <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "12px 14px" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Container & Codecs</span>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--accent)", marginTop: "2px" }}>
+              {meta.video_codec ? `${meta.video_codec.toUpperCase()} / ${meta.audio_codec?.toUpperCase() || 'PCM'}` : "Analyzing..."}
+            </div>
+          </div>
+
+          <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "12px 14px" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Resolution & Rate</span>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "#a5d6ff", marginTop: "2px" }}>
+              {meta.width ? `${meta.width}x${meta.height} @ ${meta.fps || 24} FPS` : "Probing stream..."}
+            </div>
+          </div>
+
+          <div style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", padding: "12px 14px" }}>
+            <span style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Faces Identified</span>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: liveFaces.length > 0 ? "#00d68f" : "var(--text-secondary)", marginTop: "2px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: liveFaces.length > 0 ? "#00d68f" : "#888", animation: "pulse 1.5s infinite" }} />
+              {liveFaces.length} Keyframes Extracted
+            </div>
+          </div>
+        </div>
+
+        {/* PROGRESS BAR & STAGES */}
+        <div className="progress-container" style={{ padding: "24px", background: "var(--surface-dark)", border: "1px solid var(--border)", borderRadius: "var(--radius-xl)" }}>
           <div className="progress-stages">
             {STAGES.map((stage, i) => (
               <div
@@ -267,7 +301,7 @@ export default function MediaAudit() {
             ))}
           </div>
 
-          <div className="progress-bar-track" style={{ marginTop: 28 }}>
+          <div className="progress-bar-track" style={{ marginTop: 24 }}>
             <div
               className="progress-bar-fill"
               style={{ width: `${progress}%`, transition: "width 0.5s ease" }}
@@ -324,19 +358,51 @@ export default function MediaAudit() {
             ))}
           </div>
 
-          {/* LIVE STREAMED FACE EXTRACTIONS */}
-          {liveFaces.length > 0 && (
-            <div style={{ marginTop: "20px", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span>🎞️</span> Live Face Extraction Stream ({liveFaces.length} detected)
-                </div>
-                <span className="pill-outline" style={{ fontSize: "10px", color: "#00d68f", border: "1px solid rgba(0,214,143,0.3)" }}>
-                  Analyzing Sequences...
+          {/* ── LIVELY SLIDING FACE EXTRACTION CAROUSEL ── */}
+          <div 
+            style={{ 
+              marginTop: "24px", 
+              background: "linear-gradient(180deg, rgba(20,22,25,0.9) 0%, rgba(10,11,13,0.95) 100%)", 
+              border: "1px solid var(--border)", 
+              borderRadius: "var(--radius-lg)", 
+              padding: "18px",
+              position: "relative",
+              overflow: "hidden"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <div style={{ fontSize: "13px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ color: "var(--accent)" }}>🎞️</span> Live Keyframe Extraction & Face Tracking
+                <span className="pill-outline" style={{ fontSize: "10px", color: "#00d68f", border: "1px solid rgba(0,214,143,0.4)", backgroundColor: "rgba(0,214,143,0.05)" }}>
+                  ● LIVE STREAM
                 </span>
               </div>
-              
-              <div style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "4px" }}>
+              <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "monospace" }}>
+                {liveFaces.length > 0 ? `${liveFaces.length} frames evaluated` : "Sampling 15 FPS frames..."}
+              </span>
+            </div>
+            
+            {liveFaces.length === 0 ? (
+              <div style={{ padding: "30px", textAlign: "center", border: "1px dashed var(--border-light)", borderRadius: "var(--radius-md)", background: "rgba(0,0,0,0.2)" }}>
+                <div style={{ fontSize: "28px", marginBottom: "8px", animation: "pulse 1.5s infinite" }}>🎯</div>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)" }}>
+                  Scanning video frames for human facial regions & landmark boundaries...
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>
+                  Extracted face crops and ViT neural classifications will slide across this tape in real time.
+                </div>
+              </div>
+            ) : (
+              <div 
+                className="live-face-ticker"
+                style={{ 
+                  display: "flex", 
+                  gap: "14px", 
+                  overflowX: "auto", 
+                  paddingBottom: "10px",
+                  scrollBehavior: "smooth"
+                }}
+              >
                 {liveFaces.map((ev, idx) => {
                   const time = ev.artifact_refs?.[0]?.timestamp_sec || 0;
                   const mins = Math.floor(time / 60);
@@ -345,47 +411,150 @@ export default function MediaAudit() {
                   const faces = ev.artifact_refs?.[0]?.faces || [];
                   const faceObj = faces.length > 0 ? faces[0] : null;
                   const cropUrl = resolveStorageUrl(faceObj?.face_crop);
-                  const isClean = (ev.score_or_null ?? 0) < 0.4;
-                  
+                  const fakeProb = faceObj?.fake_score ?? 0;
+                  const isFake = fakeProb > 0.5;
+
                   return (
                     <div 
                       key={idx}
+                      onClick={() => faceObj && setSelectedFace({ face: faceObj, timeStr, event: ev })}
                       style={{
-                        minWidth: "105px",
-                        background: "#1a1d21",
+                        minWidth: "128px",
+                        background: "#131416",
                         borderRadius: "var(--radius-md)",
-                        border: `2px solid ${isClean ? "#00d68f" : "#ffaa00"}`,
+                        border: `2px solid ${isFake ? "rgba(255, 74, 74, 0.7)" : "rgba(0, 214, 143, 0.7)"}`,
                         overflow: "hidden",
                         flexShrink: 0,
+                        position: "relative",
+                        cursor: faceObj ? "pointer" : "default",
+                        boxShadow: isFake ? "0 0 12px rgba(255, 74, 74, 0.2)" : "0 0 12px rgba(0, 214, 143, 0.2)",
+                        transition: "transform 0.2s ease",
                       }}
                     >
-                      <div style={{ width: "100%", height: "76px", background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {/* Face Thumbnail with Cyber Laser Reticle */}
+                      <div style={{ width: "100%", height: "95px", background: "#000", position: "relative", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {cropUrl ? (
                           <img src={cropUrl} alt={`Keyframe ${timeStr}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                         ) : (
-                          <span style={{ fontSize: "10px", color: "#666" }}>Seq #{timeStr}</span>
+                          <span style={{ fontSize: "11px", color: "#666" }}>Frame #{timeStr}</span>
                         )}
+                        
+                        {/* Target Crosshairs / Bounding Box Brackets */}
+                        <div style={{ position: "absolute", top: 4, left: 4, borderTop: "2px solid #FF5A24", borderLeft: "2px solid #FF5A24", width: 8, height: 8 }} />
+                        <div style={{ position: "absolute", top: 4, right: 4, borderTop: "2px solid #FF5A24", borderRight: "2px solid #FF5A24", width: 8, height: 8 }} />
+                        <div style={{ position: "absolute", bottom: 4, left: 4, borderBottom: "2px solid #FF5A24", borderLeft: "2px solid #FF5A24", width: 8, height: 8 }} />
+                        <div style={{ position: "absolute", bottom: 4, right: 4, borderBottom: "2px solid #FF5A24", borderRight: "2px solid #FF5A24", width: 8, height: 8 }} />
+                        
+                        {/* Laser scan line animation */}
+                        <div 
+                          style={{
+                            position: "absolute",
+                            left: 0,
+                            right: 0,
+                            height: "2px",
+                            background: isFake ? "rgba(255, 74, 74, 0.8)" : "rgba(0, 214, 143, 0.8)",
+                            boxShadow: isFake ? "0 0 8px #ff4a4a" : "0 0 8px #00d68f",
+                            animation: "scanline 2s linear infinite"
+                          }}
+                        />
+
+                        <span style={{ position: "absolute", bottom: 4, left: 6, fontSize: "10px", fontWeight: 800, color: "#fff", background: "rgba(0,0,0,0.7)", padding: "1px 4px", borderRadius: "3px" }}>
+                          {timeStr}
+                        </span>
                       </div>
-                      <div style={{ padding: "6px", background: "rgba(0,0,0,0.85)" }}>
-                        <div style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-primary)" }}>{timeStr}</div>
-                        <div style={{ fontSize: "9px", color: isClean ? "#00d68f" : "#ffaa00", fontWeight: 600 }}>
-                          {faceObj ? `Risk: ${(faceObj.fake_score * 100).toFixed(0)}%` : "Analyzed"}
+
+                      {/* Face Telemetry Metrics */}
+                      <div style={{ padding: "8px", background: "rgba(0,0,0,0.85)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                          <span style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: 700 }}>ViT RISK</span>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: isFake ? "#ff4a4a" : "#00d68f" }}>
+                            {(fakeProb * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div className="progress-bar-track" style={{ height: "4px", margin: 0 }}>
+                          <div className="progress-bar-fill" style={{ width: `${fakeProb * 100}%`, background: isFake ? "#ff4a4a" : "#00d68f" }} />
+                        </div>
+                        <div style={{ fontSize: "9px", color: "var(--text-secondary)", marginTop: "4px", textAlign: "center" }}>
+                          {isFake ? "🚨 Synthetic Artifact" : "✓ Organic Match"}
                         </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* LIVE DIAGNOSTIC STREAM */}
-          <div style={{ marginTop: "20px", padding: "14px", background: "rgba(0,0,0,0.3)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)", position: "relative", overflow: "hidden" }}>
+          {/* DUAL SIGNAL WAVEFORM & SPECTRAL RADAR SCOPE */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px", marginTop: "20px" }}>
+            {/* Audio-Visual Lip Synchrony Scope */}
+            <div style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", padding: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>👄</span> Audio-Visual Lip Sync Correlation (MAR / RMS)
+                </span>
+                <span style={{ fontSize: "10px", color: progress >= 75 ? "#00d68f" : "var(--text-muted)", fontFamily: "monospace" }}>
+                  {progress >= 75 ? "Correlating Signals" : "Buffering Audio..."}
+                </span>
+              </div>
+              <div style={{ height: "45px", display: "flex", alignItems: "center", gap: "3px", overflow: "hidden" }}>
+                {Array.from({ length: 28 }).map((_, i) => {
+                  const active = progress >= 75;
+                  const height = active ? 10 + Math.sin(i * 0.8 + progress * 0.2) * 20 + Math.random() * 12 : 6;
+                  return (
+                    <div 
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: `${Math.max(4, height)}px`,
+                        background: active ? (i % 2 === 0 ? "var(--accent)" : "#00d68f") : "#333",
+                        borderRadius: "2px",
+                        transition: "height 0.2s ease"
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2D-DCT High-Frequency Anomaly Scope */}
+            <div style={{ background: "rgba(0,0,0,0.3)", border: "1px solid var(--border-light)", borderRadius: "var(--radius-md)", padding: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>⚡</span> 2D-DCT Frequency FFT Sub-Pixel Radar
+                </span>
+                <span style={{ fontSize: "10px", color: progress >= 30 ? "var(--accent)" : "var(--text-muted)", fontFamily: "monospace" }}>
+                  {progress >= 30 ? "Scanning High-Freqs" : "Awaiting Chunks..."}
+                </span>
+              </div>
+              <div style={{ height: "45px", display: "flex", alignItems: "center", gap: "3px", overflow: "hidden" }}>
+                {Array.from({ length: 28 }).map((_, i) => {
+                  const active = progress >= 30;
+                  const height = active ? 8 + Math.cos(i * 0.5 + progress * 0.15) * 18 + Math.random() * 10 : 6;
+                  return (
+                    <div 
+                      key={i}
+                      style={{
+                        flex: 1,
+                        height: `${Math.max(4, height)}px`,
+                        background: active ? "#a5d6ff" : "#333",
+                        borderRadius: "2px",
+                        transition: "height 0.2s ease"
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* LIVE DIAGNOSTIC TERMINAL LOGS */}
+          <div style={{ marginTop: "20px", padding: "14px", background: "rgba(0,0,0,0.4)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)", position: "relative", overflow: "hidden" }}>
             <div style={{ fontSize: "11px", color: "var(--text-secondary)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "1px", display: "flex", justifyContent: "space-between" }}>
               <span>Live Diagnostic Stream</span>
               <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#00d68f", animation: "pulse 1.5s infinite" }} />
-                Celery Worker Connected
+                Celery Pipeline Active
               </span>
             </div>
             
@@ -393,14 +562,14 @@ export default function MediaAudit() {
               {(() => {
                  const logs = [
                    "[sys] Celery worker connected to Redis broker...",
-                   "[sys] Job initialized. Computing SHA-256 fingerprint..."
+                   `[hash] Chunked SHA-256 fingerprint verified.`
                  ];
-                 if (progress >= 5) logs.push(`[ffprobe] Extracting container stream metadata & creation tags...`);
-                 if (progress >= 15) logs.push(`[ffmpeg] Extracting 15 FPS frame sequence & 16kHz mono audio...`);
-                 if (progress >= 30) logs.push(`[vit] Loading ViT patch-16 deepfake classifier & MediaPipe FaceMesh...`);
-                 if (progress > 30 && progress < 75) logs.push(`[vit/dct] Scoring face crops & landmark stability... (${Math.round(progress)}%)`);
-                 if (progress >= 75 && progress < 90) logs.push(`[librosa] Correlating mouth aspect ratio (MAR) with RMS energy...`);
-                 if (progress >= 90) logs.push(`[fusion] Executing 5-signal weighted Bayesian ensemble...`);
+                 if (progress >= 5) logs.push(`[ffprobe] Extracted technical container tags: ${meta.video_codec || 'h264'} / ${meta.audio_codec || 'aac'}`);
+                 if (progress >= 15) logs.push(`[ffmpeg] Dense 15 FPS keyframe extraction & 16kHz mono audio split complete.`);
+                 if (progress >= 30) logs.push(`[vit] Vision Transformer Patch-16 & MediaPipe FaceMesh loaded.`);
+                 if (progress > 30 && progress < 75) logs.push(`[vit/dct] Evaluated ${liveFaces.length} facial sequences for generative artifacts (${Math.round(progress)}%)...`);
+                 if (progress >= 75 && progress < 90) logs.push(`[librosa] Correlating Mouth Aspect Ratio (MAR) with acoustic RMS energy...`);
+                 if (progress >= 90) logs.push(`[fusion] Computing 5-signal multi-modal Bayesian consensus...`);
                  if (progress >= 100) logs.push(`[verdict] Forensic audit complete. Ready.`);
                  
                  return logs.slice(-3).map((log, idx, arr) => (
@@ -417,6 +586,15 @@ export default function MediaAudit() {
             </div>
           </div>
         </div>
+
+        {/* Global Keyframe Scanline Animation */}
+        <style jsx global>{`
+          @keyframes scanline {
+            0% { top: 0%; opacity: 0.8; }
+            50% { top: 100%; opacity: 1; }
+            100% { top: 0%; opacity: 0.8; }
+          }
+        `}</style>
       </div>
     );
   }

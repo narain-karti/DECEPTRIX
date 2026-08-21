@@ -11,10 +11,12 @@ class MediaJobResponse(BaseModel):
     sha256: Optional[str] = None
     current_step: Optional[str] = None
     evidence: List[EvidenceEvent] = []
+    report_data: Optional[dict] = None
 
 class MediaResultResponse(BaseModel):
     id: str
     verdict: Optional[str]
     timeline_evidence: List[EvidenceEvent] = []
     provenance: Optional[Any] = None
+    report_data: Optional[dict] = None
     report_links: dict

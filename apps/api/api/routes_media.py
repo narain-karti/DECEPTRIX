@@ -92,7 +92,8 @@ async def get_media_job(job_id: str, db: Session = Depends(get_db)):
         filename=job.filename,
         sha256=job.sha256,
         current_step=job.current_step,
-        evidence=evidence_events
+        evidence=evidence_events,
+        report_data=job.report_data
     )
 
 @router.get("/jobs/{job_id}/result", response_model=MediaResultResponse)
@@ -109,6 +110,7 @@ async def get_media_job_result(job_id: str, db: Session = Depends(get_db)):
         id=job.id,
         verdict=job.verdict,
         timeline_evidence=evidence_events,
+        report_data=job.report_data,
         report_links={
             "json": f"/api/v1/reports/{job.id}.json",
             "pdf": f"/api/v1/reports/{job.id}.pdf"
