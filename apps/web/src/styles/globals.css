@@ -151,6 +151,8 @@ input, textarea, select {
   display: flex;
   min-height: 100vh;
   background-color: var(--bg-primary);
+  position: relative;
+  width: 100%;
 }
 
 .sidebar {
@@ -164,16 +166,60 @@ input, textarea, select {
   bottom: 0;
   left: 0;
   z-index: 100;
-  transition: transform var(--transition-normal);
+  transition: width var(--transition-smooth), transform var(--transition-smooth);
+  overflow-x: hidden;
+  will-change: width, transform;
+}
+
+/* Shrink/Collapsed Sidebar state */
+.sidebar.collapsed {
+  width: var(--sidebar-collapsed-width);
+}
+
+.sidebar.collapsed .sidebar-header {
+  padding: 0 14px;
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-logo {
+  font-size: 16px;
+}
+
+.sidebar.collapsed .sidebar-nav {
+  padding: 16px 8px;
+  align-items: center;
+}
+
+.sidebar.collapsed .sidebar-nav-item {
+  padding: 12px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+}
+
+.sidebar.collapsed .sidebar-nav-item span:not(.sidebar-nav-icon) {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding: 16px 12px;
+  justify-content: center;
+}
+
+.sidebar.collapsed .sidebar-user-info,
+.sidebar.collapsed .sidebar-status-dot {
+  display: none;
 }
 
 .sidebar-header {
   height: var(--header-height);
-  padding: 0 24px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-light);
+  gap: 8px;
 }
 
 .sidebar-logo {
@@ -181,6 +227,8 @@ input, textarea, select {
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .sidebar-logo span {
@@ -189,56 +237,61 @@ input, textarea, select {
 
 .sidebar-nav {
   flex: 1;
-  padding: 24px 16px;
+  padding: 20px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
+  gap: 14px;
+  padding: 10px 14px;
   border-radius: var(--radius-md);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-secondary);
   transition: all var(--transition-fast);
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .sidebar-nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: rgba(255, 255, 255, 0.04);
   color: var(--text-primary);
 }
 
 .sidebar-nav-item.active {
   background-color: var(--accent-muted);
-  color: var(--text-primary);
+  color: var(--accent);
   font-weight: 600;
+  border: 1px solid rgba(255, 90, 36, 0.2);
 }
 
 .sidebar-nav-icon {
-  font-size: 20px;
+  font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
 }
 
 .sidebar-footer {
-  padding: 16px 20px;
+  padding: 14px 16px;
   border-top: 1px solid var(--border-light);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .sidebar-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--surface-dark);
   border: 1px solid var(--border);
@@ -247,7 +300,7 @@ input, textarea, select {
   justify-content: center;
   font-weight: 700;
   color: var(--accent);
-  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .sidebar-user-info {
@@ -256,7 +309,7 @@ input, textarea, select {
 }
 
 .sidebar-username {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -279,39 +332,46 @@ input, textarea, select {
   top: 0;
   right: 0;
   left: var(--sidebar-width);
-  background-color: rgba(32, 33, 34, 0.8);
+  background-color: rgba(32, 33, 34, 0.85);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 40px;
+  padding: 0 32px;
   z-index: 90;
-  transition: left var(--transition-normal);
+  transition: left var(--transition-smooth);
+}
+
+.app-shell.sidebar-collapsed .top-header {
+  left: var(--sidebar-collapsed-width);
 }
 
 .header-brand {
-  display: none; /* Only visible on mobile */
+  display: none;
   font-weight: 800;
   font-size: 18px;
+  text-decoration: none;
 }
 
 .header-controls {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   margin-left: auto;
 }
 
 .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
   border: 1px solid var(--border-light);
+  background: transparent;
+  cursor: pointer;
   transition: all var(--transition-fast);
 }
 
@@ -329,11 +389,18 @@ input, textarea, select {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  transition: padding-left var(--transition-smooth);
+  width: 100%;
+  overflow-x: hidden;
+}
+
+.app-shell.sidebar-collapsed .main-workspace {
+  padding-left: var(--sidebar-collapsed-width);
 }
 
 .workspace-content {
   flex: 1;
-  padding: 40px;
+  padding: 32px 36px;
   max-width: var(--max-width);
   width: 100%;
   margin: 0 auto;
@@ -343,22 +410,62 @@ input, textarea, select {
 @media (max-width: 1024px) {
   .sidebar {
     transform: translateX(-100%);
+    width: var(--sidebar-width) !important;
   }
   .sidebar.open {
     transform: translateX(0);
   }
   .top-header {
-    left: 0;
-    padding: 0 20px;
+    left: 0 !important;
+    padding: 0 16px;
   }
   .header-brand {
     display: block;
   }
   .main-workspace {
-    padding-left: 0;
+    padding-left: 0 !important;
   }
   .workspace-content {
-    padding: 24px 16px;
+    padding: 20px 16px;
+  }
+  .results-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .report-preview-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-content {
+    padding: 14px 10px;
+  }
+  .floating-nav {
+    width: 100%;
+    border-radius: var(--radius-md);
+    padding: 4px;
+    gap: 4px;
+  }
+  .floating-nav-item {
+    flex: 1 1 calc(50% - 6px);
+    text-align: center;
+    justify-content: center;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .upload-zone {
+    padding: 32px 16px;
+  }
+  .keyframes-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)) !important;
+    gap: 8px !important;
+  }
+  .progress-stages {
+    display: none;
+  }
+  .btn-primary, .btn-secondary, .btn-dark {
+    width: 100%;
+    justify-content: center;
   }
 }
 

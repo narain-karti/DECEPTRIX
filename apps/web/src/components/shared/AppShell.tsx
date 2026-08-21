@@ -7,8 +7,9 @@ import { usePathname } from "next/navigation";
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
-  // Close sidebar on route change
+  // Close mobile sidebar on route change
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
@@ -45,7 +46,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
       {/* Mobile Drawer Backdrop */}
       {sidebarOpen && (
         <div
@@ -56,19 +57,49 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.6)",
+            backgroundColor: "rgba(0, 0, 0, 0.7)",
             backdropFilter: "blur(4px)",
             zIndex: 99,
           }}
         />
       )}
 
-      {/* LEFT SIDEBAR */}
-      <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+      {/* LEFT SIDEBAR (SHRINKABLE) */}
+      <aside className={`sidebar ${sidebarOpen ? "open" : ""} ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-header">
-          <Link href="/" className="sidebar-logo">
-            DECEPTR<span>IX</span>
-          </Link>
+          {!collapsed ? (
+            <Link href="/" className="sidebar-logo">
+              DECEPTR<span>IX</span>
+            </Link>
+          ) : (
+            <Link href="/" className="sidebar-logo" style={{ fontSize: "16px", color: "var(--accent)" }}>
+              DX
+            </Link>
+          )}
+
+          {/* Desktop Collapse / Shrink Toggle Button */}
+          <button
+            className="sidebar-collapse-btn desktop-only-btn"
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? "Expand sidebar" : "Shrink sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Shrink sidebar"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              style={{
+                width: "16px",
+                height: "16px",
+                transform: collapsed ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.25s ease",
+              }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5" />
+            </svg>
+          </button>
         </div>
 
         <nav className="sidebar-nav">
@@ -79,49 +110,78 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 key={item.label}
                 href={item.href}
                 className={`sidebar-nav-item ${isActive ? "active" : ""}`}
+                title={collapsed ? item.label : undefined}
               >
                 <span className="sidebar-nav-icon">{item.icon}</span>
-                <span>{item.label}</span>
+                {!collapsed && <span>{item.label}</span>}
               </Link>
             );
           })}
         </nav>
 
-        <div className="sidebar-footer">
+        <div className="sidebar-footer" title={collapsed ? "DECEPTRIX Engine v2.0 (Online)" : undefined}>
           <div className="sidebar-avatar" style={{ background: "rgba(255, 90, 36, 0.15)", color: "var(--accent)", fontWeight: 800 }}>
             DX
           </div>
-          <div className="sidebar-user-info">
-            <div className="sidebar-username">DECEPTRIX Engine</div>
-            <div className="sidebar-userstatus">Cluster v2.0 · Live</div>
-          </div>
-          <div
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "50%",
-              backgroundColor: "#00d68f",
-              boxShadow: "0 0 8px #00d68f",
-            }}
-          />
+          {!collapsed && (
+            <>
+              <div className="sidebar-user-info">
+                <div className="sidebar-username">DECEPTRIX Engine</div>
+                <div className="sidebar-userstatus">Cluster v2.0 · Live</div>
+              </div>
+              <div
+                className="sidebar-status-dot"
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  backgroundColor: "#00d68f",
+                  boxShadow: "0 0 8px #00d68f",
+                  flexShrink: 0,
+                }}
+              />
+            </>
+          )}
         </div>
       </aside>
 
       {/* TOP HEADER */}
       <header className="top-header">
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          style={{ display: "flex", width: "40px", height: "40px", border: "none" }}
-          className="icon-btn mobile-hamburger-btn"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: "24px", height: "24px" }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-          </svg>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="icon-btn mobile-hamburger-btn"
+            aria-label="Open navigation menu"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: "22px", height: "22px" }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+          </button>
 
-        <Link href="/" className="header-brand sidebar-logo" style={{ marginLeft: "12px" }}>
-          DECEPTR<span>IX</span>
-        </Link>
+          {/* Header shrink toggle for desktop */}
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="icon-btn desktop-only-btn"
+            title={collapsed ? "Expand sidebar" : "Shrink sidebar"}
+            style={{ width: "36px", height: "36px" }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              style={{ width: "18px", height: "18px" }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+            </svg>
+          </button>
+
+          <Link href="/" className="header-brand sidebar-logo">
+            DECEPTR<span>IX</span>
+          </Link>
+        </div>
 
         <div className="header-controls">
           <div className="pill-outline" style={{ border: "1px solid rgba(0, 214, 143, 0.3)", backgroundColor: "rgba(0, 214, 143, 0.05)", color: "#00d68f", fontSize: "11px", display: "flex", alignItems: "center", gap: "6px" }}>
@@ -136,14 +196,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="workspace-content">{children}</div>
       </main>
 
-      {/* Mobile Hamburger styling helper */}
+      {/* Global Responsive & Sidebar Styles */}
       <style jsx global>{`
+        .sidebar-collapse-btn {
+          width: 28px;
+          height: 28px;
+          border-radius: 6px;
+          border: 1px solid var(--border-light);
+          background: rgba(255, 255, 255, 0.03);
+          color: var(--text-secondary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .sidebar-collapse-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--text-primary);
+          border-color: var(--border-hover);
+        }
         .mobile-hamburger-btn {
           display: none !important;
         }
         @media (max-width: 1024px) {
           .mobile-hamburger-btn {
             display: flex !important;
+          }
+          .desktop-only-btn {
+            display: none !important;
           }
         }
       `}</style>
