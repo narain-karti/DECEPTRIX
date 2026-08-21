@@ -644,14 +644,38 @@ export default function MediaAudit() {
     verdictIcon = "⚠️";
   }
 
-  // Find visual events
+  // Find visual events and extract signals
   const visualEvents = resultData?.timeline_evidence?.filter((e: any) => e.modality === "media") || [];
-  const maxScore = visualEvents.length > 0 
-    ? Math.max(...visualEvents.map((e: any) => e.score_or_null || 0)) 
-    : 0;
+  
+  const faceItems = visualEvents.flatMap((e: any) => e.artifact_refs?.[0]?.faces || []);
+  const maxFake = faceItems.length > 0 ? Math.max(...faceItems.map((f: any) => f.fake_score || 0)) : 0;
+  const maxJitter = faceItems.length > 0 ? Math.max(...faceItems.map((f: any) => f.jitter_score || 0)) : 0;
+  const maxFreq = faceItems.length > 0 ? Math.max(...faceItems.map((f: any) => f.freq_score || 0)) : 0;
+  
+  const lipEvent = resultData?.timeline_evidence?.find((e: any) => e.modality === "audio_visual");
+  const lipSyncVal = lipEvent?.score_or_null ?? 0.0;
+  
+  const metaEvent = resultData?.timeline_evidence?.find((e: any) => e.modality === "metadata");
+  const metaVal = metaEvent?.score_or_null ?? 0.15;
 
-  const finalScore = resultData?.report_data?.final_score ?? maxScore;
-  const signalScores = resultData?.report_data?.signal_scores || {};
+  const rawSignalScores = resultData?.report_data?.signal_scores || {};
+  const signalScores = {
+    deepfake_classifier: typeof rawSignalScores.deepfake_classifier === 'number' && rawSignalScores.deepfake_classifier > 0 ? rawSignalScores.deepfake_classifier : maxFake,
+    lip_sync: typeof rawSignalScores.lip_sync === 'number' && rawSignalScores.lip_sync > 0 ? rawSignalScores.lip_sync : lipSyncVal,
+    jitter: typeof rawSignalScores.jitter === 'number' && rawSignalScores.jitter > 0 ? rawSignalScores.jitter : maxJitter,
+    frequency: typeof rawSignalScores.frequency === 'number' && rawSignalScores.frequency > 0 ? rawSignalScores.frequency : maxFreq,
+    metadata: typeof rawSignalScores.metadata === 'number' && rawSignalScores.metadata > 0 ? rawSignalScores.metadata : metaVal,
+  };
+
+  const calculatedFinal = (signalScores.deepfake_classifier * 0.35) + 
+                          (signalScores.lip_sync * 0.25) + 
+                          (signalScores.jitter * 0.15) + 
+                          (signalScores.frequency * 0.15) + 
+                          (signalScores.metadata * 0.10);
+
+  const finalScore = typeof resultData?.report_data?.final_score === 'number' && resultData.report_data.final_score > 0
+    ? resultData.report_data.final_score
+    : calculatedFinal;
 
   return (
     <div>

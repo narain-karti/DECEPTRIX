@@ -417,7 +417,7 @@ def process_media_job(job_id: str):
         db.commit()
 
         deepfake_max = max(all_deepfake_scores) if all_deepfake_scores else 0.0
-        jitter_max = max([e.score_or_null for e in frame_events if e.type == "sequence_analysis"] + [0.0])
+        jitter_max = max(all_freq_scores if False else [f.get("jitter_score", 0.0) for ev in frame_events for ref in (ev.artifact_refs or []) for f in (ref.get("faces") or [])] + [0.0])
         lip_sync_val = max([e.score_or_null for e in frame_events if e.type == "lip_sync_analysis"] + [0.0])
         freq_max = max(all_freq_scores) if all_freq_scores else 0.0
         meta_val = max([e.score_or_null for e in frame_events if e.type == "metadata_inspection"] + [0.0])
@@ -441,22 +441,31 @@ def process_media_job(job_id: str):
         job.current_step = "Analysis complete."
         job.verdict = verdict
         job.evidence = [e.model_dump(mode='json') for e in frame_events]
-        if job.report_data:
-            job.report_data["final_score"] = final_score
-            job.report_data["signal_weights"] = {
+        
+        # Build complete report_data dictionary explicitly
+        report_data_dict = {
+            "metadata": metadata,
+            "final_score": float(final_score),
+            "signal_weights": {
                 "deepfake_classifier": 0.35,
                 "lip_sync": 0.25,
                 "jitter": 0.15,
                 "frequency": 0.15,
                 "metadata": 0.10
+            },
+            "signal_scores": {
+                "deepfake_classifier": float(deepfake_max),
+                "lip_sync": float(lip_sync_val),
+                "jitter": float(jitter_max),
+                "frequency": float(freq_max),
+                "metadata": float(meta_val)
             }
-            job.report_data["signal_scores"] = {
-                "deepfake_classifier": deepfake_max,
-                "lip_sync": lip_sync_val,
-                "jitter": jitter_max,
-                "frequency": freq_max,
-                "metadata": meta_val
-            }
+        }
+        job.report_data = report_data_dict
+        
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(job, "report_data")
+        
         job.completed_at = datetime.datetime.utcnow()
         db.commit()
 
