@@ -667,15 +667,20 @@ export default function MediaAudit() {
     metadata: typeof rawSignalScores.metadata === 'number' && rawSignalScores.metadata > 0 ? rawSignalScores.metadata : metaVal,
   };
 
-  const calculatedFinal = (signalScores.deepfake_classifier * 0.35) + 
-                          (signalScores.lip_sync * 0.25) + 
-                          (signalScores.jitter * 0.15) + 
-                          (signalScores.frequency * 0.15) + 
-                          (signalScores.metadata * 0.10);
+  // Bayesian Evidence Fusion
+  const dfPrimary = signalScores.deepfake_classifier;
+  const corroboration = (signalScores.lip_sync * 0.40) + 
+                        (signalScores.jitter * 0.25) + 
+                        (signalScores.frequency * 0.25) + 
+                        (signalScores.metadata * 0.10);
+
+  const calculatedFinal = dfPrimary >= 0.70
+    ? dfPrimary + ((1.0 - dfPrimary) * corroboration * 0.5)
+    : 1.0 - ((1.0 - dfPrimary) * (1.0 - (corroboration * 0.6)));
 
   const finalScore = typeof resultData?.report_data?.final_score === 'number' && resultData.report_data.final_score > 0
     ? resultData.report_data.final_score
-    : calculatedFinal;
+    : Math.max(0.0, Math.min(1.0, calculatedFinal));
 
   return (
     <div>

@@ -274,16 +274,23 @@ def render_reportlab_dossier(job, db):
     dct_score = float(raw_signals.get("frequency", max_freq))
     met_score = float(raw_signals.get("metadata", meta_score))
 
-    calc_composite = (vit_score * 0.35) + (lip_score * 0.25) + (jit_score * 0.15) + (dct_score * 0.15) + (met_score * 0.10)
+    # Bayesian Evidence Fusion
+    corroboration = (lip_score * 0.40) + (jit_score * 0.25) + (dct_score * 0.25) + (met_score * 0.10)
+    if vit_score >= 0.70:
+        calc_composite = vit_score + ((1.0 - vit_score) * corroboration * 0.5)
+    else:
+        calc_composite = 1.0 - ((1.0 - vit_score) * (1.0 - (corroboration * 0.6)))
+    calc_composite = float(max(0.0, min(1.0, calc_composite)))
+
     composite_score = float(report_data.get("final_score") or calc_composite)
     
-    if composite_score > 0.6 or "Manipulated" in verdict:
+    if composite_score >= 0.65 or vit_score >= 0.80 or "Manipulated" in verdict:
         verdict_text = "LIKELY MANIPULATED"
         verdict_badge = "CRITICAL RISK (SYNTHETIC MEDIA DETECTED)"
         verdict_color = COLOR_CRITICAL
         verdict_bg = COLOR_CRITICAL_BG
         verdict_border = COLOR_CRITICAL_BORDER
-    elif composite_score > 0.4 or "Suspicious" in verdict:
+    elif composite_score >= 0.40 or "Suspicious" in verdict:
         verdict_text = "SUSPICIOUS ARTIFACTS"
         verdict_badge = "ELEVATED RISK (ANOMALIES IDENTIFIED)"
         verdict_color = COLOR_WARNING

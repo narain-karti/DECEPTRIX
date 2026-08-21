@@ -411,29 +411,36 @@ def process_media_job(job_id: str):
             except Exception as e:
                 print(f"Lip sync analysis error: {e}")
 
-        # -- Step 5: Fusion --
+        # -- Step 5: Bayesian Evidentiary Fusion --
         job.progress = 90
-        job.current_step = "Fusing multi-modal confidence scores..."
+        job.current_step = "Computing Bayesian multi-modal consensus..."
         db.commit()
 
+        # Top-3 mean for robust visual scoring
+        sorted_dfs = sorted(all_deepfake_scores, reverse=True)
+        deepfake_primary = float(np.mean(sorted_dfs[:3])) if len(sorted_dfs) >= 3 else (float(sorted_dfs[0]) if sorted_dfs else 0.0)
         deepfake_max = max(all_deepfake_scores) if all_deepfake_scores else 0.0
-        jitter_max = max(all_freq_scores if False else [f.get("jitter_score", 0.0) for ev in frame_events for ref in (ev.artifact_refs or []) for f in (ref.get("faces") or [])] + [0.0])
+
+        jitter_max = max([f.get("jitter_score", 0.0) for ev in frame_events for ref in (ev.artifact_refs or []) for f in (ref.get("faces") or [])] + [0.0])
         lip_sync_val = max([e.score_or_null for e in frame_events if e.type == "lip_sync_analysis"] + [0.0])
         freq_max = max(all_freq_scores) if all_freq_scores else 0.0
         meta_val = max([e.score_or_null for e in frame_events if e.type == "metadata_inspection"] + [0.0])
 
-        final_score = (
-            deepfake_max * 0.35 +
-            lip_sync_val * 0.25 +
-            jitter_max * 0.15 +
-            freq_max * 0.15 +
-            meta_val * 0.10
-        )
+        # Corroborating signals weighted combination
+        corroboration = (lip_sync_val * 0.40) + (jitter_max * 0.25) + (freq_max * 0.25) + (meta_val * 0.10)
+
+        # Bayesian Evidence Fusion: Primary modality preserves dominant weight; corroborating signals amplify certainty
+        if deepfake_primary >= 0.70:
+            final_score = deepfake_primary + ((1.0 - deepfake_primary) * corroboration * 0.5)
+        else:
+            final_score = 1.0 - ((1.0 - deepfake_primary) * (1.0 - (corroboration * 0.6)))
+
+        final_score = float(max(0.0, min(1.0, final_score)))
 
         verdict = "Likely Real"
-        if final_score > 0.6:
+        if final_score >= 0.65 or deepfake_primary >= 0.80:
             verdict = "Likely Manipulated"
-        elif final_score > 0.4:
+        elif final_score >= 0.40:
             verdict = "Suspicious"
 
         job.progress = 100
