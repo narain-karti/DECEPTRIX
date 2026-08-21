@@ -85,7 +85,8 @@ async def get_media_job(job_id: str, db: Session = Depends(get_db)):
         
     evidence_events = []
     if job.evidence:
-        evidence_events = [EvidenceEvent(**e) for e in job.evidence]
+        evidence_list: list = job.evidence  # type: ignore
+        evidence_events = [EvidenceEvent(**e) for e in evidence_list]
 
     return MediaJobResponse(
         id=job.id,
@@ -106,7 +107,8 @@ async def get_media_job_result(job_id: str, db: Session = Depends(get_db)):
         
     evidence_events = []
     if job.evidence:
-        evidence_events = [EvidenceEvent(**e) for e in job.evidence]
+        evidence_list: list = job.evidence  # type: ignore
+        evidence_events = [EvidenceEvent(**e) for e in evidence_list]
         
     return MediaResultResponse(
         id=job.id,

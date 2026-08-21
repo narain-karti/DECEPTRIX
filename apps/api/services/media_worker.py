@@ -2,19 +2,13 @@ import os
 import uuid
 import datetime
 import subprocess
-import json
-import cv2
 import glob
 import shutil
-import hashlib
+import cv2
 import numpy as np
-import librosa
-from sqlalchemy.orm import Session
-from transformers import pipeline
-from PIL import Image
 import mediapipe as mp
-from scipy.stats import pearsonr
-from scipy.fft import dctn
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from core.celery_app import celery_app
 from core.database import SessionLocal
@@ -22,136 +16,18 @@ from models.orm import Job
 from schemas.common import EvidenceEvent
 from core.config import settings
 
+from services.detectors import get_detector
+from services.forensics.face_tracking import FaceTracker, preprocess_face_for_model
+from services.forensics.temporal import TemporalForensicsEngine, analyze_segment_consistency
+from services.forensics.frequency import FrequencyForensicsEngine
+from services.forensics.lip_sync import AudioVisualSyncEngine
+from services.forensics.metadata import MetadataEvidence
+from services.forensics.fusion import EvidenceFusionEngine
+from services.calibration.calibrator import ModelCalibrator
+from services.evidence.builder import EvidenceBuilder
+
 mp_face_mesh = mp.solutions.face_mesh
-
-# --- Lazy-loaded models ---
-
-_deepfake_detector = None
-from transformers import AutoImageProcessor, AutoModelForImageClassification
-import torch
-
-_vit_processor = None
-_vit_model = None
-_face_net = None
-
-def get_deepfake_detector():
-    global _vit_processor, _vit_model
-    if _vit_model is None:
-        print("Loading ViT Deepfake Classifier (dima806)...")
-        model_name = "dima806/deepfake_vs_real_image_detection"
-        _vit_processor = AutoImageProcessor.from_pretrained(model_name)
-        _vit_model = AutoModelForImageClassification.from_pretrained(model_name)
-        _vit_model.eval()
-    return _vit_processor, _vit_model
-
-def score_deepfake_face(pil_img):
-    processor, model = get_deepfake_detector()
-    inputs = processor(images=[pil_img], return_tensors="pt")
-    with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs.logits[0]
-    
-    labels = model.config.id2label
-    fake_idx = next((k for k, v in labels.items() if 'fake' in str(v).lower()), 1)
-    real_idx = 1 - fake_idx
-    
-    logit_fake = float(logits[fake_idx].item())
-    logit_real = float(logits[real_idx].item())
-    delta = logit_fake - logit_real
-    
-    # Balanced sigmoid centered at delta=3.8:
-    # Real video (delta < 2.0) -> score < 0.15
-    # AI video (delta >= 5.5) -> score >= 0.85
-    # Pure AI avatars (delta >= 10.0) -> score >= 0.99
-    calibrated = 1.0 / (1.0 + np.exp(-1.0 * (delta - 3.8)))
-    return float(max(0.0, min(1.0, calibrated)))
-
-def get_face_net():
-    global _face_net
-    if _face_net is None:
-        print("Loading OpenCV DNN Face Detector...")
-        prototxt_path = os.path.join("models", "cv2_dnn", "deploy.prototxt")
-        model_path = os.path.join("models", "cv2_dnn", "res10_300x300_ssd_iter_140000.caffemodel")
-        _face_net = cv2.dnn.readNetFromCaffe(prototxt_path, model_path)
-    return _face_net
-
-
-# --- Helper functions ---
-
-def extract_metadata(file_path):
-    """Run ffprobe and return structured metadata + anomaly score."""
-    try:
-        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
-               "-show_format", "-show_streams", file_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        probe = json.loads(result.stdout)
-
-        fmt = probe.get("format", {})
-        streams = probe.get("streams", [])
-
-        video_stream = next((s for s in streams if s.get("codec_type") == "video"), None)
-        audio_stream = next((s for s in streams if s.get("codec_type") == "audio"), None)
-
-        # Parse FPS safely
-        fps_val = 0
-        if video_stream:
-            fps_str = video_stream.get("r_frame_rate", "0/1")
-            if "/" in str(fps_str):
-                parts = str(fps_str).split("/")
-                fps_val = int(parts[0]) / max(1, int(parts[1]))
-            else:
-                fps_val = float(fps_str)
-
-        metadata = {
-            "duration": float(fmt.get("duration", 0)),
-            "format_name": fmt.get("format_name", "unknown"),
-            "container": fmt.get("format_long_name", "unknown"),
-            "video_codec": video_stream.get("codec_name", "unknown") if video_stream else "none",
-            "width": int(video_stream.get("width", 0)) if video_stream else 0,
-            "height": int(video_stream.get("height", 0)) if video_stream else 0,
-            "fps": fps_val,
-            "audio_codec": audio_stream.get("codec_name", "none") if audio_stream else "none",
-            "audio_sample_rate": int(audio_stream.get("sample_rate", 0)) if audio_stream else 0,
-            "has_creation_date": bool(fmt.get("tags", {}).get("creation_time")),
-        }
-
-        # Simple anomaly scoring
-        anomaly_score = 0.0
-        reasons = []
-        if not metadata["has_creation_date"]:
-            anomaly_score += 0.15
-            reasons.append("No creation date in metadata")
-        if metadata["video_codec"] not in ("h264", "hevc", "vp8", "vp9", "av1"):
-            anomaly_score += 0.1
-            reasons.append(f"Unusual codec: {metadata['video_codec']}")
-        if metadata["duration"] < 1.0:
-            anomaly_score += 0.1
-            reasons.append("Very short duration")
-
-        return metadata, min(1.0, anomaly_score), reasons
-    except Exception as e:
-        print(f"FFprobe error: {e}")
-        return {}, 0.0, ["FFprobe unavailable"]
-
-
-def compute_frequency_score(face_crop_gray):
-    """Detect GAN artifacts in frequency domain via DCT.
-    Real faces have smooth frequency falloff; GANs often have
-    unusual energy in mid/high frequencies."""
-    try:
-        resized = cv2.resize(face_crop_gray, (128, 128))
-        dct = dctn(resized.astype(np.float32), norm='ortho')
-        h, w = dct.shape
-        high_freq_energy = np.mean(np.abs(dct[h // 2:, w // 2:]))
-        total_energy = np.mean(np.abs(dct)) + 1e-6
-        ratio = high_freq_energy / total_energy
-        # Real faces: ratio ~0.1-0.2; GAN faces: ratio often >0.3
-        return min(1.0, max(0.0, (ratio - 0.1) / 0.3))
-    except Exception:
-        return 0.0
-
-
-# --- Main Celery Task ---
+ANALYSIS_FPS = int(os.environ.get("ANALYSIS_FPS", "8"))
 
 @celery_app.task(name="services.media_worker.process_media_job")
 def process_media_job(job_id: str):
@@ -167,58 +43,54 @@ def process_media_job(job_id: str):
         job.current_step = "Extracting technical metadata (FFprobe)..."
         db.commit()
 
-        file_path = job.file_path
         frame_events = []
 
         # -- Step 1: Metadata Extraction --
-        metadata, meta_score, meta_reasons = extract_metadata(file_path)
+        metadata, meta_score, meta_reasons = MetadataEvidence.extract(job.file_path)
 
         meta_explanation = "Technical metadata inspection. "
-        if meta_reasons and meta_reasons != ["FFprobe unavailable"]:
+        if meta_reasons and not "unavailable" in meta_reasons[0]:
             meta_explanation += "Anomalies: " + "; ".join(meta_reasons) + "."
         else:
             meta_explanation += "No metadata anomalies detected."
 
-        frame_events.append(EvidenceEvent(
-            event_id=str(uuid.uuid4()),
-            case_id=job_id,
+        meta_evidence = EvidenceBuilder.build(
             modality="metadata",
-            type="metadata_inspection",
+            event_type="metadata_inspection",
             status="completed",
-            score_or_null=float(meta_score),
-            severity="low" if meta_score < 0.2 else "medium",
-            confidence_quality="high",
-            scope="full_file",
-            explanation=meta_explanation,
-            model_or_connector="FFprobe Metadata Inspector",
+            score=float(meta_score),
+            confidence=0.9,
+            model="FFprobe Metadata Inspector",
             version="1.0",
+            timestamp=None,
+            severity="low" if meta_score < 0.2 else "medium",
+            explanation=meta_explanation,
             limitations="Metadata can be stripped or modified; absence is informational, not conclusive.",
-            created_at=datetime.datetime.utcnow()
-        ))
+            case_id=job_id
+        )
+        frame_events.append(EvidenceEvent(**meta_evidence))
 
-        # Store metadata in report_data and evidence for live frontend polling
         job.report_data = {"metadata": metadata}
         job.evidence = [e.model_dump(mode='json') for e in frame_events]
-        from sqlalchemy.orm.attributes import flag_modified
         flag_modified(job, "report_data")
         flag_modified(job, "evidence")
+        
         job.progress = 15
-        job.current_step = "Extracting video frames and audio (15 FPS)..."
+        job.current_step = f"Extracting video frames and audio ({ANALYSIS_FPS} FPS)..."
         db.commit()
 
         # -- Step 2: Frame & Audio Extraction --
         os.makedirs(temp_dir, exist_ok=True)
-
         try:
             ffmpeg_cmd = [
-                "ffmpeg", "-i", file_path, "-vf", "fps=15",
+                "ffmpeg", "-i", job.file_path, "-vf", f"fps={ANALYSIS_FPS}",
                 f"{temp_dir}/frame_%04d.jpg", "-y"
             ]
             subprocess.run(ffmpeg_cmd, capture_output=True, check=True, timeout=120)
 
             audio_path = f"{temp_dir}/audio.wav"
             ffmpeg_audio_cmd = [
-                "ffmpeg", "-i", file_path, "-vn", "-acodec", "pcm_s16le",
+                "ffmpeg", "-i", job.file_path, "-vn", "-acodec", "pcm_s16le",
                 "-ar", "16000", "-ac", "1", audio_path, "-y"
             ]
             subprocess.run(ffmpeg_audio_cmd, capture_output=True, check=False, timeout=120)
@@ -226,315 +98,211 @@ def process_media_job(job_id: str):
             print(f"Error extracting media: {e}")
 
         job.progress = 30
-        job.current_step = "Loading AI models..."
+        job.current_step = "Initializing Forensics Engines..."
         db.commit()
 
         faces_dir = os.path.join(settings.STORAGE_DIR, f"{job_id}_faces")
         os.makedirs(faces_dir, exist_ok=True)
 
-        net = get_face_net()
-        deepfake_detector = get_deepfake_detector()
+        detector = get_detector()
+        face_tracker = FaceTracker()
+        temporal_engine = TemporalForensicsEngine()
+        audio_engine = AudioVisualSyncEngine(fps=ANALYSIS_FPS)
+        calibrator = ModelCalibrator()
 
         frames = sorted(glob.glob(f"{temp_dir}/*.jpg"))
-        mar_series = []
-        all_freq_scores = []
         all_deepfake_scores = []
+        all_freq_scores = []
 
-        # -- Step 3: Visual Analysis (Face Detection + Deepfake + Jitter + DCT) --
+        # -- Step 3: Sequence Analysis (Visual + Temporal + Frequency) --
         with mp_face_mesh.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5) as face_mesh:
+            static_image_mode=True, max_num_faces=1,
+            refine_landmarks=True, min_detection_confidence=0.5) as face_mesh:
 
-            chunk_size = 15
+            chunk_size = ANALYSIS_FPS
             for chunk_start in range(0, len(frames), chunk_size):
                 chunk = frames[chunk_start:chunk_start + chunk_size]
                 if len(chunk) < chunk_size // 2:
                     continue
 
-                timestamp_sec = chunk_start // 15
-                job.current_step = f"Analyzing visual artifacts at {timestamp_sec}s..."
-                job.progress = 30 + min(35, int((chunk_start / max(len(frames), 1)) * 35))
+                timestamp_sec = chunk_start / ANALYSIS_FPS
+                job.current_step = f"Analyzing sequences at {timestamp_sec:.1f}s..."
+                job.progress = 30 + min(40, int((chunk_start / max(len(frames), 1)) * 40))
                 db.commit()
 
-                jitter_scores = []
+                chunk_deepfake_scores = []
+                chunk_freq_scores = []
+                bboxes_evidence = []
+                model_disagreement = 0.0
 
-                first_frame_path = chunk[0]
-                img = cv2.imread(first_frame_path)
-                if img is None:
-                    continue
-
-                (h, w) = img.shape[:2]
-                blob = cv2.dnn.blobFromImage(cv2.resize(img, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0))
-                net.setInput(blob)
-                detections = net.forward()
-
-                best_box = None
-                for j in range(0, detections.shape[2]):
-                    confidence = detections[0, 0, j, 2]
-                    if confidence > 0.5:
-                        box = detections[0, 0, j, 3:7] * np.array([w, h, w, h])
-                        (startX, startY, endX, endY) = box.astype("int")
-                        (startX, startY) = (max(0, startX), max(0, startY))
-                        (endX, endY) = (min(w - 1, endX), min(h - 1, endY))
-                        if startX >= endX or startY >= endY:
-                            continue
-                        best_box = (startX, startY, endX, endY)
-                        break
-
-                if best_box is None:
-                    continue
-
-                (startX, startY, endX, endY) = best_box
-
-                # Landmarks for MAR and jitter
                 for frame_path in chunk:
-                    f_img = cv2.imread(frame_path)
-                    if f_img is None:
-                        continue
-                    f_rgb = cv2.cvtColor(f_img, cv2.COLOR_BGR2RGB)
+                    img = cv2.imread(frame_path)
+                    if img is None: continue
+                    
+                    bbox = face_tracker.get_face_bbox(img)
+                    if not bbox: continue
+
+                    # Landmarks for temporal and audio engines
+                    f_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     results = face_mesh.process(f_rgb)
                     if results.multi_face_landmarks:
                         landmarks = results.multi_face_landmarks[0].landmark
+                        
                         top_lip = np.array([landmarks[13].x, landmarks[13].y])
                         bottom_lip = np.array([landmarks[14].x, landmarks[14].y])
                         left_lip = np.array([landmarks[78].x, landmarks[78].y])
                         right_lip = np.array([landmarks[308].x, landmarks[308].y])
                         mar = np.linalg.norm(top_lip - bottom_lip) / (np.linalg.norm(left_lip - right_lip) + 1e-6)
-                        mar_series.append(mar)
+                        audio_engine.add_mar(mar)
 
                         left_eye = np.array([landmarks[33].x, landmarks[33].y])
                         right_eye = np.array([landmarks[263].x, landmarks[263].y])
                         eye_dist = np.linalg.norm(left_eye - right_eye)
-                        jitter_scores.append(eye_dist)
+                        temporal_engine.add_jitter(eye_dist)
                     else:
-                        mar_series.append(0)
+                        audio_engine.add_mar(0)
 
-                # High-frequency differential jitter calculation (ignoring camera shot-cuts / person switches)
-                if len(jitter_scores) >= 4:
-                    diffs = np.abs(np.diff(jitter_scores))
-                    mean_eye = np.mean(jitter_scores) + 1e-6
-                    rel_diffs = diffs / mean_eye
-                    # Reject shot-cuts or person switches (jumps > 0.20)
-                    valid_diffs = [d for d in rel_diffs if d < 0.20]
-                    if len(valid_diffs) >= 3:
-                        high_freq_flutter = float(np.mean(valid_diffs))
-                        # Natural human head motion < 0.05; synthetic face warping > 0.12
-                        visual_jitter_score = float(min(1.0, max(0.0, (high_freq_flutter - 0.05) / 0.08)))
-                    else:
-                        visual_jitter_score = 0.0
-                else:
-                    visual_jitter_score = 0.0
+                    # Crop and Predict
+                    pil_face = preprocess_face_for_model(img, bbox)
+                    if pil_face:
+                        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                        blur_variance = cv2.Laplacian(gray, cv2.CV_64F).var()
 
-                # Extract face crop with 35% margin padding to preserve headshot proportions for ViT
-                box_w = endX - startX
-                box_h = endY - startY
-                center_x = (startX + endX) // 2
-                center_y = (startY + endY) // 2
-                crop_size = int(max(box_w, box_h) * 1.35)
+                        result = detector.predict(pil_face)
+                        calibrated = calibrator.calibrate(
+                            result["fake_score"], 
+                            result["model_name"],
+                            blur_variance=blur_variance
+                        )
+                        fake_score = calibrated["calibrated_score"]
+                        model_disagreement = result.get("model_disagreement", 0.0)
+                        
+                        chunk_deepfake_scores.append(fake_score)
+                        all_deepfake_scores.append(fake_score)
 
-                p_startX = max(0, center_x - crop_size // 2)
-                p_startY = max(0, center_y - crop_size // 2)
-                p_endX = min(w, center_x + crop_size // 2)
-                p_endY = min(h, center_y + crop_size // 2)
-                face_crop = img[p_startY:p_endY, p_startX:p_endX]
+                        # Frequency
+                        (startX, startY, endX, endY) = bbox
+                        face_crop = img[startY:endY, startX:endX]
+                        if face_crop.size > 0:
+                            face_gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+                            freq_features = FrequencyForensicsEngine.compute_frequency_features(face_gray)
+                            chunk_freq_scores.append(freq_features["freq_score"])
+                            all_freq_scores.append(freq_features["freq_score"])
 
-                face_filepath = ""
-                deepfake_score = 0.0
-                freq_score = 0.0
+                            face_filename = f"seq_{timestamp_sec:.1f}_face.jpg"
+                            face_filepath = os.path.join(faces_dir, face_filename)
+                            cv2.imwrite(face_filepath, face_crop)
 
-                if face_crop.size > 0:
-                    face_filename = f"seq_{timestamp_sec}_face.jpg"
-                    face_filepath = os.path.join(faces_dir, face_filename)
-                    cv2.imwrite(face_filepath, face_crop)
+                            bboxes_evidence.append({
+                                "bbox": [int(startX), int(startY), int(endX), int(endY)],
+                                "confidence": result["confidence"],
+                                "fake_score": float(fake_score),
+                                "freq_score": float(freq_features["freq_score"]),
+                                "face_crop": face_filepath
+                            })
 
-                    # Deepfake classifier (ViT)
-                    try:
-                        pil_face = Image.fromarray(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB))
-                        deepfake_score = score_deepfake_face(pil_face)
-                        all_deepfake_scores.append(deepfake_score)
-                    except Exception as e:
-                        print(f"Deepfake classifier error: {e}")
+                if not chunk_deepfake_scores:
+                    continue
 
-                    # DCT Frequency Analysis
-                    face_gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
-                    freq_score = compute_frequency_score(face_gray)
-                    all_freq_scores.append(freq_score)
-
-                # Combined visual score for this chunk (for per-chunk display)
-                combined_chunk_score = (deepfake_score * 0.5) + (visual_jitter_score * 0.25) + (freq_score * 0.25)
-
-                frame_severity = "low"
-                if combined_chunk_score > 0.6:
-                    frame_severity = "high"
-                elif combined_chunk_score > 0.4:
-                    frame_severity = "medium"
-
-                bboxes = [{
-                    "bbox": [int(startX), int(startY), int(endX), int(endY)],
-                    "confidence": 0.99,
-                    "fake_score": float(deepfake_score),
-                    "jitter_score": float(visual_jitter_score),
-                    "freq_score": float(freq_score),
-                    "face_crop": face_filepath
-                }]
-
-                frame_events.append(EvidenceEvent(
-                    event_id=str(uuid.uuid4()),
-                    case_id=job_id,
-                    modality="media",
-                    type="sequence_analysis",
+                chunk_df_score = float(np.mean(chunk_deepfake_scores))
+                chunk_fr_score = float(np.mean(chunk_freq_scores))
+                chunk_tmp_score = temporal_engine.extract_temporal_score()
+                
+                combined = (chunk_df_score * 0.6) + (chunk_tmp_score * 0.2) + (chunk_fr_score * 0.2)
+                
+                # Visual Evidence Event
+                vis_evidence = EvidenceBuilder.build(
+                    modality="visual",
+                    event_type="ensemble_classifier",
                     status="completed",
-                    score_or_null=float(combined_chunk_score),
-                    severity=frame_severity,
-                    confidence_quality="high",
-                    scope=f"frames_{chunk_start}-{chunk_start + len(chunk)}",
-                    explanation=f"Sequence at {timestamp_sec}s: Deepfake={deepfake_score:.2f}, Jitter={visual_jitter_score:.2f}, DCT={freq_score:.2f}.",
-                    artifact_refs=[{"timestamp_sec": timestamp_sec, "faces": bboxes}],
-                    model_or_connector="ViT Deepfake Classifier + MediaPipe Landmarks + DCT",
+                    score=float(combined),
+                    confidence=1.0 - model_disagreement,
+                    model=detector.__class__.__name__,
                     version="2.0",
-                    limitations="Deepfake model trained on older generation techniques; may not catch latest methods.",
-                    created_at=datetime.datetime.utcnow()
-                ))
+                    timestamp=timestamp_sec,
+                    severity="high" if combined > 0.6 else ("medium" if combined > 0.4 else "low"),
+                    explanation=f"Visual={chunk_df_score:.2f}, Temp={chunk_tmp_score:.2f}, Freq={chunk_fr_score:.2f}",
+                    limitations="Image-level detector; temporal consistency is evaluated separately.",
+                    case_id=job_id
+                )
+                
+                ev_obj = EvidenceEvent(**vis_evidence)
+                ev_obj.artifact_refs = [{"timestamp_sec": timestamp_sec, "faces": bboxes_evidence}]
+                frame_events.append(ev_obj)
 
-                # Commit progressive evidence so frontend can display live face extractions
                 job.evidence = [e.model_dump(mode='json') for e in frame_events]
-                from sqlalchemy.orm.attributes import flag_modified
                 flag_modified(job, "evidence")
                 db.commit()
 
-        # -- Step 4: Lip Sync Analysis --
-        audio_path = f"{temp_dir}/audio.wav"
-        if os.path.exists(audio_path) and len(mar_series) > 15:
-            try:
-                job.current_step = "Performing lip-sync (audio-visual) correlation..."
-                job.progress = 75
-                db.commit()
+        # -- Step 4: Audio-Visual Sync --
+        job.current_step = "Computing audio-visual sync..."
+        job.progress = 80
+        db.commit()
+        
+        lip_sync_res = audio_engine.analyze(f"{temp_dir}/audio.wav")
+        audio_evidence = EvidenceBuilder.build(
+            modality="audio_visual",
+            event_type="lip_sync",
+            status="completed" if lip_sync_res["status"] == "COMPLETED" else "not_applicable",
+            score=lip_sync_res["lip_sync_score"],
+            confidence=1.0 if lip_sync_res["status"] == "COMPLETED" else 0.0,
+            model="MediaPipe MAR + Librosa RMS Correlation",
+            version="1.0",
+            timestamp=None,
+            severity="high" if lip_sync_res["lip_sync_score"] > 0.6 else "low",
+            explanation=lip_sync_res["message"],
+            limitations="Silent segments or non-speech audio reduce reliability.",
+            case_id=job_id
+        )
+        frame_events.append(EvidenceEvent(**audio_evidence))
 
-                waveform, sample_rate = librosa.load(audio_path, sr=16000)
-                hop_length = sample_rate // 15
-                rms = librosa.feature.rms(y=waveform, hop_length=hop_length)[0]
-
-                min_len = min(len(mar_series), len(rms))
-                mar_aligned = np.array(mar_series[:min_len])
-                rms_aligned = rms[:min_len]
-
-                lip_sync_score = 0.15  # default clean
-                if np.std(mar_aligned) > 1e-5 and np.std(rms_aligned) > 1e-5:
-                    correlation, _ = pearsonr(mar_aligned, rms_aligned)
-                    if np.isnan(correlation):
-                        lip_sync_score = 0.15
-                    elif correlation > 0.30:
-                        lip_sync_score = max(0.05, 0.30 - (correlation * 0.4))
-                    elif correlation > 0.10:
-                        lip_sync_score = 0.20
-                    else:
-                        lip_sync_score = min(0.85, 0.40 - (correlation * 0.4))
-
-                severity = "low"
-                if lip_sync_score > 0.6:
-                    severity = "high"
-                elif lip_sync_score > 0.4:
-                    severity = "medium"
-
-                frame_events.append(EvidenceEvent(
-                    event_id=str(uuid.uuid4()),
-                    case_id=job_id,
-                    modality="audio_visual",
-                    type="lip_sync_analysis",
-                    status="completed",
-                    score_or_null=float(lip_sync_score),
-                    severity=severity,
-                    confidence_quality="high",
-                    scope="full_video",
-                    explanation=f"Audio-visual lip sync correlation. Score {lip_sync_score:.2f} — {'Low' if lip_sync_score > 0.5 else 'Adequate'} synchronization between mouth movement and audio energy.",
-                    model_or_connector="MediaPipe MAR + Librosa RMS Pearson Correlation",
-                    version="1.0",
-                    limitations="Silent segments or non-speech audio reduce reliability.",
-                    created_at=datetime.datetime.utcnow()
-                ))
-            except Exception as e:
-                print(f"Lip sync analysis error: {e}")
-
-        # -- Step 5: Multi-Modal Consensus Fusion --
+        # -- Step 5: Evidence Fusion --
+        job.current_step = "Fusing multi-modal evidence..."
         job.progress = 90
-        job.current_step = "Computing Bayesian multi-modal consensus..."
         db.commit()
 
-        # Robust temporal aggregation: 60% median + 40% 75th percentile to reject single-frame noise
-        if all_deepfake_scores:
-            vit_med = float(np.median(all_deepfake_scores))
-            vit_q75 = float(np.percentile(all_deepfake_scores, 75)) if len(all_deepfake_scores) >= 4 else max(all_deepfake_scores)
-            deepfake_primary = (vit_med * 0.60) + (vit_q75 * 0.40)
-            deepfake_max = max(all_deepfake_scores)
-        else:
-            deepfake_primary = 0.0
-            deepfake_max = 0.0
+        df_overall = float(np.percentile(all_deepfake_scores, 85)) if all_deepfake_scores else 0.0
+        fr_overall = float(np.mean(all_freq_scores)) if all_freq_scores else 0.0
+        tp_overall = temporal_engine.extract_temporal_score()
+        
+        # Calculate overall model disagreement
+        disagreement_overall = 0.0 # Could track from frames, fallback to default
 
-        jitter_max = max([f.get("jitter_score", 0.0) for ev in frame_events for ref in (ev.artifact_refs or []) for f in (ref.get("faces") or [])] + [0.0])
-        lip_sync_val = max([e.score_or_null for e in frame_events if e.type == "lip_sync_analysis"] + [0.0])
-        freq_max = max(all_freq_scores) if all_freq_scores else 0.0
-        meta_val = max([e.score_or_null for e in frame_events if e.type == "metadata_inspection"] + [0.0])
-
-        corroboration = (lip_sync_val * 0.35) + (jitter_max * 0.25) + (freq_max * 0.25) + (meta_val * 0.15)
-
-        # Multi-modal agreement count across independent signals
-        elevated_signals = sum([
-            1 if deepfake_primary > 0.60 else 0,
-            1 if lip_sync_val > 0.45 else 0,
-            1 if jitter_max > 0.45 else 0,
-            1 if freq_max > 0.35 else 0,
-        ])
-
-        if deepfake_primary >= 0.75 and elevated_signals >= 1:
-            # High-confidence AI generation (e.g. synthetic face synthesis)
-            final_score = min(1.0, max(0.85, deepfake_primary))
-            verdict = "Likely Manipulated"
-        elif deepfake_primary >= 0.55 and elevated_signals >= 2:
-            final_score = min(0.90, max(0.70, (deepfake_primary * 0.6) + (corroboration * 0.4)))
-            verdict = "Likely Manipulated"
-        elif elevated_signals >= 2:
-            final_score = 0.68
-            verdict = "Likely Manipulated"
-        elif elevated_signals >= 1 or deepfake_primary >= 0.45:
-            final_score = max(0.35, min(0.55, deepfake_primary))
-            verdict = "Suspicious"
-        else:
-            final_score = max(0.05, min(0.25, (deepfake_primary * 0.5) + (corroboration * 0.3)))
-            verdict = "Likely Real"
-
-        final_score = float(max(0.0, min(1.0, final_score)))
+        fusion_result = EvidenceFusionEngine.fuse(
+            visual_score=df_overall,
+            visual_model_disagreement=disagreement_overall,
+            temporal_score=tp_overall,
+            frequency_score=fr_overall,
+            lip_sync_score=lip_sync_res["lip_sync_score"],
+            metadata_score=meta_score
+        )
+        
+        suspicious_segments = EvidenceFusionEngine.detect_suspicious_segments([e.model_dump(mode='json') for e in frame_events if e.modality == "visual"], fps=ANALYSIS_FPS)
 
         job.progress = 100
         job.status = "completed"
         job.current_step = "Analysis complete."
-        job.verdict = verdict
+        job.verdict = fusion_result["classification"]
         job.evidence = [e.model_dump(mode='json') for e in frame_events]
         
-        # Build complete report_data dictionary explicitly
         report_data_dict = {
             "metadata": metadata,
-            "final_score": float(final_score),
-            "signal_weights": {
-                "deepfake_classifier": 0.35,
-                "lip_sync": 0.25,
-                "jitter": 0.15,
-                "frequency": 0.15,
-                "metadata": 0.10
-            },
+            "final_score": fusion_result["final_score"],
+            "assessment_confidence": fusion_result["confidence"],
+            "evidence_quality": fusion_result["evidence_quality"],
+            "signal_consensus": fusion_result["signal_consensus"],
+            "suspicious_segments": suspicious_segments,
             "signal_scores": {
-                "deepfake_classifier": float(deepfake_primary),
-                "lip_sync": float(lip_sync_val),
-                "jitter": float(jitter_max),
-                "frequency": float(freq_max),
-                "metadata": float(meta_val)
+                "visual": df_overall,
+                "temporal": tp_overall,
+                "lip_sync": lip_sync_res["lip_sync_score"],
+                "frequency": fr_overall,
+                "metadata": meta_score
             }
         }
         job.report_data = report_data_dict
-        
-        from sqlalchemy.orm.attributes import flag_modified
         flag_modified(job, "report_data")
+        flag_modified(job, "evidence")
         
         job.completed_at = datetime.datetime.utcnow()
         db.commit()

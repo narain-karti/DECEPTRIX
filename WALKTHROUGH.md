@@ -1,28 +1,32 @@
-# 🎬 DECEPTRIX Media Pipeline Updates
+# 🎬 DECEPTRIX Media Pipeline Updates (SOTA AI Video Forensics Upgrade)
 
-This document summarizes the recent updates and improvements made to the DECEPTRIX deepfake detection pipeline and UI.
+This document summarizes the massive recent upgrades and architecture refactoring that transitioned DECEPTRIX from a naive image-based deepfake classifier into a robust, multi-modal **SOTA AI Video Forensics Pipeline**. 
 
-## 1. Real Face Detection & Dynamic UI Terminal
+The system no longer analyzes isolated frames out of context. It uses a **Bayesian evidence fusion approach** across 5 independent signals to determine manipulation likelihood.
+
+## 1. Refactored Engine Architecture
 **The Problem:**
-- The UI indicators for "Analyzing Sequence..." were hardcoded loops that felt static.
-- The output PDF lacked original identifications, and the `0.50` deepfake score was a static placeholder threshold because the visual pipeline wasn't properly correlating audio and mouth movements.
+- The `media_worker.py` was highly monolithic, containing hundreds of lines of inline analysis for video logic, making it impossible to scale or track independent AI modules.
 
 **The Solution:**
-- **Dynamic Terminal Logs**: We replaced the static `[sys] init workers pool` CSS loop in `MediaAudit.tsx` with a dynamic state that maps precisely to the real backend progress of Celery! It now outputs real-time metrics (e.g. `[task] Extracting video frames and audio...`).
-- **MediaPipe Facial Landmark Mapping**: Instead of using the generic VideoMAE model, the pipeline now extracts the face dynamically. This allows the backend to crop the **actual faces** from the video and save them. 
-- **PDF Face Embeddings**: These newly extracted face crops are now seamlessly passed into `routes_reports.py`, so the final PDF accurately embeds the original faces identified in the video instead of mock data!
+- **Decoupled Engines**: Broken down into a scalable architecture under `apps/api/services`:
+  - `detectors/`: Abstract `VisualDeepfakeDetector` interface supporting implementations like `Dima806Detector`, `PrithivDeepFakeV2Detector`, and an `EnsembleVisualDetector`.
+  - `forensics/temporal.py`: Extracted temporal jitter logic based on MediaPipe FaceMesh to measure structural inconsistencies.
+  - `forensics/frequency.py`: Implemented a 2D-DCT (Discrete Cosine Transform) high-frequency analysis engine to detect GAN artifacts in the spectral domain.
+  - `forensics/lip_sync.py`: Audio-Visual Synchronization engine computing the Pearson correlation between Mouth Aspect Ratio (MAR) and Librosa audio RMS energy.
+  - `forensics/metadata.py`: Extracted FFprobe stream analysis into its own engine.
+  - `forensics/fusion.py`: Created an `EvidenceFusionEngine` to perform Bayesian evidence fusion across all modalities.
 
-## 2. Multi-Modal Lip Sync & Deepfake Scoring
+## 2. ViT Deepfake Hallucination Mitigation (Laplacian Blur Penalty)
 **The Problem:**
-- Real videos were returning false positive scores because the deepfake threshold fallback was `0.50` for general Audio Classification (since the current audio model was intended for keyword spotting, not deepfake spoofing).
+- Image-based classifiers (like `dima806` or `prithivMLmods`) are trained on pristine, static AI generated images. When running on standard video frames, they frequently hallucinate "synthetic artifacts" due to natural motion blur and H.264 compression, yielding extreme false positives for real videos.
 
 **The Solution:**
-- **Audio-Visual Pearson Correlation (Lip Sync)**: I implemented a new multi-modal check in `media_worker.py`! The pipeline now measures the `Mouth Aspect Ratio (MAR)` using `MediaPipe FaceMesh` and correlates it with the `Audio Energy (RMS)` using `librosa`. 
-- If the audio does not match the lip movements (low correlation), the deepfake score increases.
-- **Facial Jitter Detection**: Analyzes eye distance variance across frames to detect common deepfake flickering and blending artifacts.
-- The `0.50` static threshold was removed, giving a much more accurate scale that will reduce false positives for real videos!
+- **Laplacian Variance Blur Detector**: Implemented inside `media_worker.py` and linked to a new `ModelCalibrator`. 
+- When a frame is detected as blurry (variance < 100), the system actively penalizes and suppresses the ViT's "fake score", preventing 0.95 hallucinated scores from motion blur.
+- Combined with the 5-Signal Bayesian Fusion, even if the visual classifier falsely flags an artifact, the temporal stability, lip-sync, and DCT frequencies will drag the score back to an authentic/inconclusive classification.
 
-## 3. Infrastructure Stability
-- The `mediapipe`, `librosa`, and `scipy` dependencies were successfully installed in the backend.
-- The `opencv-contrib-python` dependency was correctly pegged to `<5.x` to maintain support for legacy `cv2.dnn.readNetFromCaffe` loaders used in the inference pipeline.
-- The FPDF library calls were patched to be fully compatible with both `fpdf` and `fpdf2` standard engines, preventing IDE errors and ensuring crash-free PDF generation.
+## 3. Upgraded Frontend Intelligence HUD & PDF Dossier
+- Upgraded the Next.js `MediaAudit.tsx` component to parse and render the **5-Signal Ensemble Decomposition**.
+- The `routes_reports.py` PDF generation logic dynamically scales to support the multi-modal signals and correctly reflects the final multi-modal consensus.
+- Re-labeled "Primary ViT Detector" dynamically to "Primary Visual Detector", ensuring that local component cards correctly reflect their isolated scores, avoiding visual confusion with the global composite anomaly score.

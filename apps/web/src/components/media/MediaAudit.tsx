@@ -667,7 +667,7 @@ export default function MediaAudit() {
   }
 
   // Find visual events and extract signals
-  const visualEvents = resultData?.timeline_evidence?.filter((e: any) => e.modality === "media") || [];
+  const visualEvents = resultData?.timeline_evidence?.filter((e: any) => e.modality === "visual" || e.modality === "media") || [];
   
   const faceItems = visualEvents.flatMap((e: any) => e.artifact_refs?.[0]?.faces || []);
   const maxFake = faceItems.length > 0 ? Math.max(...faceItems.map((f: any) => f.fake_score || 0)) : 0;
@@ -848,23 +848,27 @@ export default function MediaAudit() {
           </div>
         </div>
 
-        {/* Primary ViT Detector Card */}
+        {/* Primary Visual Detector Card */}
         <div className="result-card">
           <div className="result-card-header">
-            <div className="result-card-title">🔬 Primary ViT Detector</div>
-            <span className={`result-card-status ${isReal ? 'status-clean' : 'status-warning'}`}>
-              {isManipulated ? "High Risk" : isSuspicious ? "Medium Risk" : "Low Risk"}
+            <div className="result-card-title">🔬 Primary Visual Detector</div>
+            <span className={`result-card-status`} style={{ 
+                color: maxFake > 0.6 ? "#ff4a4a" : maxFake > 0.4 ? "#ffaa00" : "#00d68f",
+                borderColor: maxFake > 0.6 ? "#ff4a4a" : maxFake > 0.4 ? "#ffaa00" : "#00d68f",
+                backgroundColor: maxFake > 0.6 ? "rgba(255, 74, 74, 0.1)" : maxFake > 0.4 ? "rgba(255, 170, 0, 0.1)" : "rgba(0, 214, 143, 0.1)"
+              }}>
+              {maxFake > 0.6 ? "High Risk" : maxFake > 0.4 ? "Medium Risk" : "Low Risk"}
             </span>
           </div>
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <span className="caption">Max Visual Anomaly Score</span>
-              <span style={{ color: isReal ? "#00d68f" : "#ffaa00", fontWeight: 700, fontSize: 14 }}>
+              <span style={{ color: maxFake > 0.6 ? "#ff4a4a" : maxFake > 0.4 ? "#ffaa00" : "#00d68f", fontWeight: 700, fontSize: 14 }}>
                 {maxFake.toFixed(2)}
               </span>
             </div>
             <div className="progress-bar-track">
-              <div className="progress-bar-fill" style={{ width: `${maxFake * 100}%`, background: isReal ? "#00d68f" : "#ffaa00" }} />
+              <div className="progress-bar-fill" style={{ width: `${maxFake * 100}%`, background: maxFake > 0.6 ? "#ff4a4a" : maxFake > 0.4 ? "#ffaa00" : "#00d68f" }} />
             </div>
           </div>
           <div className="caption" style={{ fontSize: 12 }}>
@@ -888,7 +892,7 @@ export default function MediaAudit() {
                 <div className="evidence-dot" style={{ background: color }} />
                 <div className="evidence-content">
                   <div className="evidence-title">
-                    {ev.modality === 'media' ? "Visual Artifact & Landmark Analysis" :
+                    {ev.modality === 'visual' || ev.modality === 'media' ? "Visual Artifact & Landmark Analysis" :
                      ev.modality === 'audio_visual' ? "Audio-Visual Lip Sync Correlation" :
                      ev.modality === 'metadata' ? "Technical Container & Metadata Inspection" :
                      ev.modality === 'frequency' ? "Spectral Frequency Analysis" :

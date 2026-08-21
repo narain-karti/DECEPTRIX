@@ -1,12 +1,13 @@
 import glob
 import os
-import sys
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "apps", "api"))
+os.environ["DATABASE_URL"] = "sqlite:///./apps/api/deceptrix.db"
 
-sys.path.append("apps/api")
-
-from services.media_worker import process_media_job
-from core.database import SessionLocal
+from core.database import SessionLocal, engine
 from models.orm import Job
+import numpy as np
+from services.media_worker import process_media_job
 
 db = SessionLocal()
 jobs = db.query(Job).filter(Job.modality == "media").order_by(Job.created_at.desc()).limit(5).all()
