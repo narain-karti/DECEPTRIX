@@ -24,6 +24,7 @@ export default function MediaAudit() {
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState("Initializing...");
   const [resultData, setResultData] = useState<any>(null);
+  const [liveEvidence, setLiveEvidence] = useState<any[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedFace, setSelectedFace] = useState<{ face: FaceRef; timeStr: string; event: any } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,6 +37,7 @@ export default function MediaAudit() {
     setFlow("processing");
     setProgress(0);
     setResultData(null);
+    setLiveEvidence([]);
     setErrorMsg("");
 
     const formData = new FormData();
@@ -72,6 +74,11 @@ export default function MediaAudit() {
           setCurrentStep(data.current_step);
         }
 
+        // Live stream progressive evidence
+        if (data.evidence && Array.isArray(data.evidence)) {
+          setLiveEvidence(data.evidence);
+        }
+
         if (data.status === "completed") {
           clearInterval(interval);
           const resultRes = await fetch(`${API_BASE}/api/v1/media/jobs/${jobId}/result`);
@@ -86,7 +93,7 @@ export default function MediaAudit() {
       } catch (err: any) {
         console.error("Polling error:", err);
       }
-    }, 2000);
+    }, 1500);
 
     return () => {
       clearInterval(interval);
@@ -111,6 +118,7 @@ export default function MediaAudit() {
     setJobId(null);
     setProgress(0);
     setResultData(null);
+    setLiveEvidence([]);
     setErrorMsg("");
     setSelectedFace(null);
   };
@@ -206,6 +214,8 @@ export default function MediaAudit() {
 
   /* ------ PROCESSING STATE ------ */
   if (flow === "processing") {
+    const liveFaces = liveEvidence.filter(e => e.artifact_refs?.[0]?.faces?.length > 0);
+
     return (
       <div>
         <div className="flow-step-nav">
@@ -313,6 +323,61 @@ export default function MediaAudit() {
               </div>
             ))}
           </div>
+
+          {/* LIVE STREAMED FACE EXTRACTIONS */}
+          {liveFaces.length > 0 && (
+            <div style={{ marginTop: "20px", background: "rgba(0,0,0,0.25)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <div style={{ fontSize: "12px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "1px", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span>🎞️</span> Live Face Extraction Stream ({liveFaces.length} detected)
+                </div>
+                <span className="pill-outline" style={{ fontSize: "10px", color: "#00d68f", border: "1px solid rgba(0,214,143,0.3)" }}>
+                  Analyzing Sequences...
+                </span>
+              </div>
+              
+              <div style={{ display: "flex", gap: "12px", overflowX: "auto", paddingBottom: "4px" }}>
+                {liveFaces.map((ev, idx) => {
+                  const time = ev.artifact_refs?.[0]?.timestamp_sec || 0;
+                  const mins = Math.floor(time / 60);
+                  const secs = time % 60;
+                  const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+                  const faces = ev.artifact_refs?.[0]?.faces || [];
+                  const faceObj = faces.length > 0 ? faces[0] : null;
+                  const cropUrl = resolveStorageUrl(faceObj?.face_crop);
+                  const isClean = (ev.score_or_null ?? 0) < 0.4;
+                  
+                  return (
+                    <div 
+                      key={idx}
+                      style={{
+                        minWidth: "105px",
+                        background: "#1a1d21",
+                        borderRadius: "var(--radius-md)",
+                        border: `2px solid ${isClean ? "#00d68f" : "#ffaa00"}`,
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <div style={{ width: "100%", height: "76px", background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {cropUrl ? (
+                          <img src={cropUrl} alt={`Keyframe ${timeStr}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        ) : (
+                          <span style={{ fontSize: "10px", color: "#666" }}>Seq #{timeStr}</span>
+                        )}
+                      </div>
+                      <div style={{ padding: "6px", background: "rgba(0,0,0,0.85)" }}>
+                        <div style={{ fontSize: "10px", fontWeight: 700, color: "var(--text-primary)" }}>{timeStr}</div>
+                        <div style={{ fontSize: "9px", color: isClean ? "#00d68f" : "#ffaa00", fontWeight: 600 }}>
+                          {faceObj ? `Risk: ${(faceObj.fake_score * 100).toFixed(0)}%` : "Analyzed"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* LIVE DIAGNOSTIC STREAM */}
           <div style={{ marginTop: "20px", padding: "14px", background: "rgba(0,0,0,0.3)", borderRadius: "8px", border: "1px solid rgba(255,255,255,0.05)", position: "relative", overflow: "hidden" }}>

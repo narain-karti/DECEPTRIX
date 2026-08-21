@@ -81,13 +81,18 @@ async def get_media_job(job_id: str, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
+    evidence_events = []
+    if job.evidence:
+        evidence_events = [EvidenceEvent(**e) for e in job.evidence]
+
     return MediaJobResponse(
         id=job.id,
         status=job.status,
-        progress=job.progress,
+        progress=job.progress or 0,
         filename=job.filename,
         sha256=job.sha256,
-        current_step=job.current_step
+        current_step=job.current_step,
+        evidence=evidence_events
     )
 
 @router.get("/jobs/{job_id}/result", response_model=MediaResultResponse)

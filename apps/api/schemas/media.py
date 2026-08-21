@@ -10,6 +10,7 @@ class MediaJobResponse(BaseModel):
     filename: Optional[str] = None
     sha256: Optional[str] = None
     current_step: Optional[str] = None
+    evidence: List[EvidenceEvent] = []
 
 class MediaResultResponse(BaseModel):
     id: str

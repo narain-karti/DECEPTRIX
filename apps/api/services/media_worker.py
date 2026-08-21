@@ -342,6 +342,10 @@ def process_media_job(job_id: str):
                     created_at=datetime.datetime.utcnow()
                 ))
 
+                # Commit progressive evidence so frontend can display live face extractions
+                job.evidence = [e.model_dump(mode='json') for e in frame_events]
+                db.commit()
+
         # -- Step 4: Lip Sync Analysis --
         audio_path = f"{temp_dir}/audio.wav"
         if os.path.exists(audio_path) and len(mar_series) > 15:
