@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 import uuid
 
@@ -13,6 +13,7 @@ router = APIRouter()
 @router.post("/audits", response_model=TextAuditResponse)
 async def create_text_audit(
     request: TextAuditRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     job_id = str(uuid.uuid4())
@@ -20,23 +21,22 @@ async def create_text_audit(
     job = Job(
         id=job_id,
         modality="text",
-        status="pending",
-        progress=0,
+        status="processing",
+        progress=10,
+        current_step="Parsing claims...",
         text_content=request.text
     )
     db.add(job)
     db.commit()
     db.refresh(job)
-    try:
-        process_text_audit.delay(job_id)
-    except Exception as e:
-        import threading
-        print(f"Celery text dispatch failed ({e}), running in background thread...")
-        threading.Thread(target=process_text_audit, args=(job_id,), daemon=True).start()
+    
+    background_tasks.add_task(process_text_audit, job_id)
     
     return TextAuditResponse(
         id=job.id,
         status=job.status,
+        progress=10,
+        current_step=job.current_step,
         extracted_claims=[],
         audit_trail=[]
     )

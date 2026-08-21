@@ -113,7 +113,7 @@ export default function MediaAudit() {
 
     // Immediate first poll
     poll();
-    const interval = setInterval(poll, 750);
+    const interval = setInterval(poll, 500);
 
     return () => {
       isMounted = false;

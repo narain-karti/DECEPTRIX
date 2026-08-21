@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 import uuid
 import os
@@ -19,6 +19,7 @@ MAX_SIZE_BYTES = 200 * 1024 * 1024  # 200 MB
 
 @router.post("/jobs", response_model=MediaJobResponse)
 async def create_media_job(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
@@ -53,8 +54,9 @@ async def create_media_job(
     job = Job(
         id=job_id,
         modality="media",
-        status="pending",
-        progress=0,
+        status="processing",
+        progress=5,
+        current_step="Initializing forensic extractors...",
         filename=file.filename,
         file_path=file_path,
         sha256=sha256_hash.hexdigest()
@@ -63,13 +65,8 @@ async def create_media_job(
     db.commit()
     db.refresh(job)
 
-    # Guaranteed execution: dispatch via Celery eager/worker, with background thread fallback
-    try:
-        process_media_job.delay(job_id)
-    except Exception as e:
-        import threading
-        print(f"Celery dispatch failed ({e}), falling back to background thread...")
-        threading.Thread(target=process_media_job, args=(job_id,), daemon=True).start()
+    # Launch ML worker truly asynchronously in background so POST returns immediately
+    background_tasks.add_task(process_media_job, job_id)
 
     return MediaJobResponse(
         id=job.id,
