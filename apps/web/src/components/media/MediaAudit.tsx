@@ -715,7 +715,7 @@ export default function MediaAudit() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {[
-            { label: "ViT Deepfake Classifier", weight: "35%", score: signalScores.deepfake_classifier ?? maxScore, icon: "🔬" },
+            { label: "ViT Deepfake Classifier", weight: "35%", score: signalScores.deepfake_classifier ?? maxFake, icon: "🔬" },
             { label: "Lip-Sync Audio-Visual Correlation", weight: "25%", score: signalScores.lip_sync ?? 0.0, icon: "👄" },
             { label: "Facial Landmark Jitter Variance", weight: "15%", score: signalScores.jitter ?? 0.0, icon: "👁️" },
             { label: "2D-DCT Spectral Frequency Anomaly", weight: "15%", score: signalScores.frequency ?? 0.0, icon: "⚡" },
@@ -833,11 +833,11 @@ export default function MediaAudit() {
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <span className="caption">Max Visual Anomaly Score</span>
               <span style={{ color: isReal ? "#00d68f" : "#ffaa00", fontWeight: 700, fontSize: 14 }}>
-                {maxScore.toFixed(2)}
+                {maxFake.toFixed(2)}
               </span>
             </div>
             <div className="progress-bar-track">
-              <div className="progress-bar-fill" style={{ width: `${maxScore * 100}%`, background: isReal ? "#00d68f" : "#ffaa00" }} />
+              <div className="progress-bar-fill" style={{ width: `${maxFake * 100}%`, background: isReal ? "#00d68f" : "#ffaa00" }} />
             </div>
           </div>
           <div className="caption" style={{ fontSize: 12 }}>
