@@ -1,20 +1,49 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
+
 export default function ReportPreview() {
+  const [copied, setCopied] = useState(false);
+
+  const sampleJson = `{
+  "report_version": "2.0.0",
+  "pipeline_version": "2.0.0-multi-modal",
+  "audit_id": "DX-CASE-9921-X7",
+  "modality": "media",
+  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "verdict": "Likely Manipulated",
+  "composite_anomaly_score": 0.74,
+  "signal_breakdown": {
+    "vit_deepfake_classifier": 0.82,
+    "lip_sync_correlation": 0.65,
+    "facial_landmark_jitter": 0.48,
+    "dct_spectral_anomaly": 0.71,
+    "metadata_container_check": 0.15
+  },
+  "audit_record_hash": "7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+}`;
+
+  const copySchema = () => {
+    navigator.clipboard.writeText(sampleJson);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div>
       <div className="section-header-row">
         <div>
-          <span className="section-label">Audit Logs</span>
-          <h2 className="section-header-title">Auditable, Transparent Output Schema</h2>
+          <span className="section-label">Audit Logs & Export</span>
+          <h2 className="section-header-title">Auditable, Tamper-Evident Output Schema</h2>
         </div>
       </div>
-      <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "24px", maxWidth: "600px" }}>
-        Every investigation produces a structured JSON record and a human-readable report with full source attribution.
+      <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "24px", maxWidth: "680px" }}>
+        Every completed investigation outputs a cryptographically hashed JSON record and a formatted PDF forensic audit report.
       </p>
 
       <div className="report-preview-layout">
-        {/* HTML mockup */}
+        {/* Visual Report Card Mockup */}
         <div className="report-html-mockup" style={{ padding: "24px" }}>
           <div
             style={{
@@ -24,66 +53,50 @@ export default function ReportPreview() {
               padding: "12px 16px",
               borderRadius: "var(--radius-md)",
               fontWeight: 800,
-              fontSize: 16,
-              marginBottom: 20,
+              fontSize: 15,
+              marginBottom: 16,
               display: "flex",
               alignItems: "center",
               gap: 10,
             }}
           >
-            <span style={{ color: "var(--accent)" }}>D</span> DECEPTRIX Audit Report
+            <span style={{ color: "var(--accent)" }}>DX</span> DECEPTRIX Forensic Audit Report
           </div>
           
-          <div style={{ marginBottom: 16, borderBottom: "1px solid var(--border-light)", paddingBottom: "12px" }}>
-            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: "var(--text-primary)" }}>
-              Audit Type: Rumour Audit
+          <div style={{ marginBottom: 14, borderBottom: "1px solid var(--border-light)", paddingBottom: "10px" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)" }}>
+              Case: DX-CASE-9921-X7 · Modality: Multi-Modal Video
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
-              ID: RA-2026-08-20-X7K9 · Pipeline: 0.1.0-mvp · Policy: gov_in_v1
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace", marginTop: "2px" }}>
+              SHA-256: e3b0c44298fc1c14... · Pipeline: v2.0-Ensemble
             </div>
           </div>
           
           <div
             style={{
-              background: "rgba(255, 77, 77, 0.06)",
-              border: "1px solid rgba(255, 77, 77, 0.15)",
+              background: "rgba(255, 77, 77, 0.08)",
+              border: "1px solid rgba(255, 77, 77, 0.25)",
               borderRadius: "var(--radius-sm)",
               padding: 12,
-              marginBottom: 16,
+              marginBottom: 14,
             }}
           >
             <div style={{ fontWeight: 700, fontSize: 13, color: "#ff4d4d" }}>
-              ❌ Outcome: Contradicted
+              🚨 Verdict: Likely Manipulated (Score: 0.74 / 1.00)
             </div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
-              Core claims contradicted by RBI and PIB Fact Check
+            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 2 }}>
+              High-confidence generative ViT texture anomalies & lip-sync desynchronization.
             </div>
           </div>
 
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "var(--text-primary)" }}>
-            Source Evidence
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, color: "var(--text-primary)" }}>
+            Ensemble Signal Findings
           </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--text-secondary)",
-              lineHeight: 1.6,
-              marginBottom: 10,
-            }}
-          >
-            <strong style={{ color: "var(--text-primary)" }}>T1 — Reserve Bank of India:</strong>{" "}
-            KYC norms allow multiple forms of officially valid documents...
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 8 }}>
+            <strong style={{ color: "var(--text-primary)" }}>• ViT Patch-16 Classifier:</strong> 82% Generative Facial Texture Risk
           </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--text-secondary)",
-              lineHeight: 1.6,
-              marginBottom: 16,
-            }}
-          >
-            <strong style={{ color: "var(--text-primary)" }}>T2 — PIB Fact Check:</strong>{" "}
-            The claim that Aadhaar is mandatory for all bank transactions is misleading...
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
+            <strong style={{ color: "var(--text-primary)" }}>• Lip-Sync Correlation:</strong> Low acoustic-visual temporal alignment (r = 0.12)
           </div>
           
           <div
@@ -91,14 +104,14 @@ export default function ReportPreview() {
               background: "rgba(255, 255, 255, 0.02)",
               border: "1px solid var(--border)",
               borderRadius: "var(--radius-sm)",
-              padding: 12,
+              padding: 10,
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 12, color: "var(--text-primary)" }}>
-              ⚠️ What this does NOT prove
+            <div style={{ fontWeight: 700, fontSize: 11, color: "var(--text-primary)" }}>
+              🔒 Cryptographic Attestation
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-              This audit does not guarantee that no Aadhaar-related policy change will ever be introduced...
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, fontFamily: "monospace" }}>
+              Signature: SHA-256(Audit Payload) = 7f83b1657ff1fc53...
             </div>
           </div>
         </div>
@@ -106,40 +119,18 @@ export default function ReportPreview() {
         {/* JSON mockup */}
         <div className="report-json-mockup" style={{ fontSize: "11px", lineHeight: "1.4" }}>
           <pre style={{ margin: 0, whiteSpace: "pre-wrap", color: "#a5d6ff" }}>
-            {`{
-  "report_version": "1.0.0",
-  "audit_id": "RA-2026-08-20-X7K9",
-  "audit_type": "rumour",
-  "timestamp": "2026-08-20T11:00:00Z",
-  "pipeline_version": "0.1.0-mvp",
-  "policy_pack": "gov_in_v1",
-  "outcome": "contradicted",
-  "claims": [
-    {
-      "claim_id": 1,
-      "text": "Aadhaar mandatory for...",
-      "outcome": "contradicted",
-      "evidence": [
-        {
-          "source": "RBI",
-          "tier": 1,
-          "verdict": "contradicts"
-        }
-      ]
-    }
-  ]
-}`}
+            {sampleJson}
           </pre>
         </div>
       </div>
 
-      <div className="report-actions" style={{ justifyContent: "center", marginTop: 24 }}>
-        <button className="btn-primary" onClick={() => alert("Downloading HTML report mockup...")}>
-          Download HTML Report <span className="btn-arrow">↓</span>
+      <div className="report-actions" style={{ justifyContent: "center", marginTop: 20, display: "flex", gap: "12px" }}>
+        <button className="btn-primary" onClick={copySchema}>
+          {copied ? "✓ Copied JSON Schema" : "Copy Output JSON Schema"}
         </button>
-        <button className="btn-secondary" onClick={() => alert("Downloading JSON schema...")}>
-          Download JSON
-        </button>
+        <Link href="/media" className="btn-secondary">
+          Run Live Investigation →
+        </Link>
       </div>
     </div>
   );

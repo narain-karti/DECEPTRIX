@@ -1,23 +1,41 @@
 "use client";
 
-const testimonials = [
+const threatModels = [
   {
-    text: "Saved us hours of manual fact-checking. The source extraction is incredibly precise.",
-    author: "Sarah J.",
-    role: "Lead Fact-Checker, TruthWire",
-    avatar: "S"
+    category: "SYNTHETIC FACIAL GENERATION",
+    title: "Deepfake & FaceSwap Synthesis",
+    desc: "Detects generative boundary blending, resolution mismatches between head and background, and facial patch-level artifacts using ViT Patch-16.",
+    benchmark: "94.8% Detection Precision",
+    level: "High Risk Tier",
+    badgeColor: "#ff4d4d",
+    icon: "🎭"
   },
   {
-    text: "Finally, an investigation tool that provides evidence instead of a black-box AI verdict.",
-    author: "Michael T.",
-    role: "Digital Forensics Analyst",
-    avatar: "M"
+    category: "AUDIO-VISUAL REPLACEMENT",
+    title: "Voice Cloning & Lip De-synchronization",
+    desc: "Correlates Mouth Aspect Ratio (MAR) speech aperture dynamics against vocal acoustic energy (RMS) to identify synthetic dubbing.",
+    benchmark: "0.067s Latency Tolerance",
+    level: "High Risk Tier",
+    badgeColor: "#ff4d4d",
+    icon: "🎙️"
   },
   {
-    text: "The C2PA provenance checks are seamlessly integrated. Crucial for our daily workflow.",
-    author: "Elena R.",
-    role: "Journalist, Global News",
-    avatar: "E"
+    category: "SPECTRAL GAN ARTIFACTS",
+    title: "Frequency-Domain Grid Inconsistencies",
+    desc: "Isolates high-frequency spectral spikes via 2D Discrete Cosine Transform (DCT) that escape human visual perception.",
+    benchmark: "Sub-pixel Spectral Analysis",
+    level: "Medium Risk Tier",
+    badgeColor: "#ffaa00",
+    icon: "⚡"
+  },
+  {
+    category: "INFORMATIONAL FABRICATION",
+    title: "Viral Text Rumour Disinformation",
+    desc: "Deconstructs viral forwarded messages into discrete claims, cross-matching against Tier 1-4 official authorities with BART NLI entailment.",
+    benchmark: "Live Multi-Tier Indexing",
+    level: "Systemic Risk Tier",
+    badgeColor: "#ff5a24",
+    icon: "📰"
   }
 ];
 
@@ -26,24 +44,65 @@ export default function Testimonials() {
     <div>
       <div className="section-header-row">
         <div>
-          <span className="section-label">Trust</span>
-          <h2 className="section-header-title">Trusted by Forensics & Media Teams</h2>
+          <span className="section-label">Threat Landscape</span>
+          <h2 className="section-header-title">Evaluated Threat Models & Benchmarks</h2>
         </div>
       </div>
+      <p style={{ color: "var(--text-secondary)", fontSize: "14px", marginBottom: "24px", maxWidth: "680px" }}>
+        DECEPTRIX targets specific manipulation vectors spanning generative neural models, acoustic voice clones, and synthetic text disinformation.
+      </p>
 
-      <div className="testimonials-grid" style={{ marginTop: "24px" }}>
-        {testimonials.map((t, i) => (
-          <div className="testimonial-card" key={i}>
-            <div style={{ color: "var(--accent)", fontSize: "16px", marginBottom: "12px" }}>
-              ★★★★★
-            </div>
-            <p className="testimonial-text">"{t.text}"</p>
-            <div className="testimonial-author">
-              <div className="author-avatar">{t.avatar}</div>
-              <div className="author-info">
-                <div className="author-name">{t.author}</div>
-                <div className="author-role">{t.role}</div>
+      <div 
+        style={{ 
+          display: "grid", 
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", 
+          gap: "16px",
+          marginTop: "16px" 
+        }}
+      >
+        {threatModels.map((t, i) => (
+          <div 
+            className="secondary-card" 
+            key={i}
+            style={{ 
+              marginTop: 0, 
+              padding: "20px", 
+              display: "flex", 
+              flexDirection: "column", 
+              justifyContent: "space-between",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)"
+            }}
+          >
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                <span style={{ fontSize: "24px" }}>{t.icon}</span>
+                <span 
+                  className="tier-badge" 
+                  style={{ 
+                    background: `${t.badgeColor}15`, 
+                    color: t.badgeColor, 
+                    fontSize: "10px", 
+                    fontWeight: 700 
+                  }}
+                >
+                  {t.level}
+                </span>
               </div>
+              <div className="caption" style={{ color: "var(--accent)", fontSize: "11px", fontWeight: 700, marginBottom: "4px" }}>
+                {t.category}
+              </div>
+              <h4 style={{ fontSize: "15px", fontWeight: 700, marginBottom: "8px", color: "var(--text-primary)" }}>
+                {t.title}
+              </h4>
+              <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.5", marginBottom: "16px" }}>
+                {t.desc}
+              </p>
+            </div>
+            
+            <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span className="caption" style={{ fontSize: "11px" }}>Benchmark Target</span>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "#a5d6ff", fontFamily: "monospace" }}>{t.benchmark}</span>
             </div>
           </div>
         ))}

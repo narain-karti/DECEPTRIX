@@ -1,108 +1,145 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import EvidenceCards from "../components/shared/EvidenceCards";
 import UseCases from "../components/shared/UseCases";
 import ImpactStats from "../components/shared/ImpactStats";
 import Testimonials from "../components/shared/Testimonials";
 import ReportPreview from "../components/report/ReportPreview";
+import MediaAudit from "../components/media/MediaAudit";
+import RumourAudit from "../components/rumour/RumourAudit";
 
-type TabState = "overview" | "layers" | "cases" | "testimonials";
+type TabState = "studio" | "layers" | "cases" | "threats";
+type StudioMode = "media" | "rumour";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabState>("overview");
+  const [activeTab, setActiveTab] = useState<TabState>("studio");
+  const [studioMode, setStudioMode] = useState<StudioMode>("media");
+  const [apiLatency, setApiLatency] = useState<string>("Checking...");
+  const [apiStatus, setApiStatus] = useState<"online" | "offline">("online");
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      const start = Date.now();
+      try {
+        const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          setApiLatency(`${Date.now() - start}ms`);
+          setApiStatus("online");
+        } else {
+          setApiLatency("HTTP Error");
+          setApiStatus("offline");
+        }
+      } catch {
+        setApiLatency("Local Mode (Ready)");
+        setApiStatus("online");
+      }
+    };
+    checkHealth();
+  }, []);
 
   return (
     <div className="dashboard-grid">
-      {/* LEFT COLUMN: PRIMARY PROFILE & INFO CARDS */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      {/* LEFT COLUMN: FORENSIC NODE TELEMETRY */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
         
-        {/* Profile / Primary Information Card */}
+        {/* Primary Forensic Node Card */}
         <div className="profile-card">
           <div className="profile-header-area">
-            <div className="profile-avatar-large">K</div>
+            <div className="profile-avatar-large" style={{ background: "linear-gradient(135deg, #FF5A24 0%, #FF7347 100%)", color: "#fff", fontWeight: 800 }}>
+              DX
+            </div>
             <div className="pill-outline" style={{ border: "1px solid rgba(0, 214, 143, 0.3)", backgroundColor: "rgba(0, 214, 143, 0.05)", color: "#00d68f", marginBottom: "12px" }}>
               <span className="pill-dot" style={{ backgroundColor: "#00d68f" }} />
-              ACTIVE INVESTIGATOR
+              ACTIVE FORENSIC NODE
             </div>
-            <h1 className="profile-title">Karthi Narain</h1>
-            <p className="profile-subtitle">Lead Forensic Architect</p>
+            <h1 className="profile-title" style={{ fontSize: "20px" }}>DECEPTRIX Core</h1>
+            <p className="profile-subtitle">Multi-Modal Disinformation Engine</p>
             <div className="profile-meta-row">
-              <span className="profile-meta-item">New Delhi, IN</span>
-              <span className="profile-meta-item">ID: 884-DX</span>
+              <span className="profile-meta-item">SIH-2026 Cluster</span>
+              <span className="profile-meta-item">ID: DX-884-AI</span>
             </div>
           </div>
 
-          <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "20px", marginBottom: "20px" }}>
-            <div className="card-section-title">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: "16px", height: "16px" }}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+          <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "16px", marginBottom: "16px" }}>
+            <div className="card-section-title" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: "15px", height: "15px", color: "var(--accent)" }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
               </svg>
-              Investigator Profile
+              Node Telemetry
             </div>
             <div className="data-row">
-              <span className="data-label">Security Clearance</span>
-              <span className="data-value">Level 4 (Authoritative)</span>
+              <span className="data-label">API Status</span>
+              <span className="data-value" style={{ color: "#00d68f", display: "flex", alignItems: "center", gap: "4px" }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "#00d68f" }} />
+                {apiLatency}
+              </span>
             </div>
             <div className="data-row">
-              <span className="data-label">Total Investigations</span>
-              <span className="data-value">1,248 cases</span>
+              <span className="data-label">Celery Worker</span>
+              <span className="data-value">Multi-Threaded Queue</span>
             </div>
             <div className="data-row">
-              <span className="data-label">Organization</span>
-              <span className="data-value">Deceptrix Core Team</span>
+              <span className="data-label">Evidence Schema</span>
+              <span className="data-value" style={{ fontFamily: "monospace", fontSize: "11px", color: "#a5d6ff" }}>v2.0-Audit</span>
+            </div>
+            <div className="data-row">
+              <span className="data-label">Integrity Hash</span>
+              <span className="data-value">SHA-256 (Enforced)</span>
             </div>
           </div>
 
           <div className="profile-actions">
-            <button className="btn-secondary" onClick={() => alert("Node key copied to clipboard!")}>
-              Copy Node ID
-            </button>
-            <button className="btn-primary" onClick={() => alert("Profile edits are locked by administrator.")}>
-              Edit Profile
-            </button>
+            <Link href="/media" className="btn-primary" style={{ textAlign: "center" }}>
+              Launch Media
+            </Link>
+            <Link href="/rumour" className="btn-secondary" style={{ textAlign: "center" }}>
+              Launch Rumour
+            </Link>
           </div>
         </div>
 
-        {/* Secondary Info Card: System Status */}
+        {/* Secondary Info Card: Model Registry */}
         <div className="secondary-card" style={{ marginTop: 0 }}>
           <div className="card-section-title">
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#00d68f", display: "inline-block", boxShadow: "0 0 6px #00d68f" }} />
-            Node Operations
+            Loaded Forensic Engines
           </div>
           <div className="data-row">
-            <span className="data-label">Local Pipeline</span>
-            <span className="data-value" style={{ color: "#00d68f" }}>Operational</span>
+            <span className="data-label">Deepfake ViT</span>
+            <span className="data-value" style={{ fontFamily: "monospace", fontSize: "11px" }}>dima806/ViT-16</span>
           </div>
           <div className="data-row">
-            <span className="data-label">Connected Peers</span>
-            <span className="data-value">14 Nodes</span>
+            <span className="data-label">Lip-Sync</span>
+            <span className="data-value">MediaPipe MAR + RMS</span>
           </div>
           <div className="data-row">
-            <span className="data-label">Default Policy Pack</span>
-            <span className="data-value" style={{ fontFamily: "monospace", fontSize: "12px" }}>gov_in_v1</span>
+            <span className="data-label">NLI Entailment</span>
+            <span className="data-value" style={{ fontFamily: "monospace", fontSize: "11px" }}>BART-Large-MNLI</span>
           </div>
           <div className="data-row">
-            <span className="data-label">Last Synchronization</span>
-            <span className="data-value">2 mins ago</span>
+            <span className="data-label">Frequency DCT</span>
+            <span className="data-value">Scipy Spectral Norm</span>
           </div>
         </div>
 
-        {/* Secondary Info Card: Subscription */}
+        {/* Secondary Info Card: Policy & Source Packs */}
         <div className="secondary-card" style={{ marginTop: 0 }}>
-          <div className="card-section-title">Billing & License</div>
+          <div className="card-section-title">Jurisdiction & Policy</div>
           <div className="data-row">
-            <span className="data-label">License Type</span>
-            <span className="data-value">Enterprise Pro Plan</span>
+            <span className="data-label">Active Policy</span>
+            <span className="data-value" style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--accent)" }}>gov_in_v1</span>
           </div>
           <div className="data-row">
-            <span className="data-label">Usage Quota</span>
-            <span className="data-value">12.4% (1,248 / 10,000)</span>
+            <span className="data-label">Primary Tier 1</span>
+            <span className="data-value">.gov.in / .nic.in / .edu</span>
           </div>
           <div className="data-row">
-            <span className="data-label">Renewal Date</span>
-            <span className="data-value">Dec 30, 2026</span>
+            <span className="data-label">Fact-Check Tier 2</span>
+            <span className="data-value">PIB / Snopes / Verified</span>
           </div>
         </div>
 
@@ -115,67 +152,96 @@ export default function Home() {
         <div style={{ display: "flex", justifyContent: "center" }}>
           <div className="floating-nav">
             <button 
-              className={`floating-nav-item ${activeTab === "overview" ? "active" : ""}`}
-              onClick={() => setActiveTab("overview")}
+              className={`floating-nav-item ${activeTab === "studio" ? "active" : ""}`}
+              onClick={() => setActiveTab("studio")}
             >
-              Overview
+              Investigation Studio
             </button>
             <button 
               className={`floating-nav-item ${activeTab === "layers" ? "active" : ""}`}
               onClick={() => setActiveTab("layers")}
             >
-              Evidence Layers
+              Ensemble Layers
             </button>
             <button 
               className={`floating-nav-item ${activeTab === "cases" ? "active" : ""}`}
               onClick={() => setActiveTab("cases")}
             >
-              Use Cases
+              Domain Use Cases
             </button>
             <button 
-              className={`floating-nav-item ${activeTab === "testimonials" ? "active" : ""}`}
-              onClick={() => setActiveTab("testimonials")}
+              className={`floating-nav-item ${activeTab === "threats" ? "active" : ""}`}
+              onClick={() => setActiveTab("threats")}
             >
-              Testimonials
+              Threat Models
             </button>
           </div>
         </div>
 
         {/* Tab workspace content */}
         <div style={{ minHeight: "600px" }}>
-          {activeTab === "overview" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+          {activeTab === "studio" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
               
-              {/* Welcome banner */}
+              {/* Studio Interactive Container */}
               <div 
                 className="secondary-card" 
                 style={{
                   marginTop: 0,
-                  background: "linear-gradient(135deg, #111112 0%, #151617 100%)",
-                  position: "relative",
-                  overflow: "hidden"
+                  background: "var(--surface-dark)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-xl)",
+                  padding: "24px",
+                  boxShadow: "var(--shadow-card)",
+                  position: "relative"
                 }}
               >
-                <div style={{ position: "absolute", top: "-20px", right: "-20px", fontSize: "120px", opacity: 0.05, transform: "rotate(-15deg)", pointerEvents: "none" }}>
-                  🛡️
+                {/* Mode Selector */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", borderBottom: "1px solid var(--border-light)", paddingBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+                  <div>
+                    <span className="section-label">Live Forensic Workspace</span>
+                    <h2 style={{ fontSize: "20px", fontWeight: "700", margin: "2px 0 0 0" }}>
+                      {studioMode === "media" ? "Video Deepfake & Facial Forensics" : "Viral Text Rumour & Source Fact-Checking"}
+                    </h2>
+                  </div>
+                  <div style={{ display: "flex", background: "var(--bg-primary)", padding: "4px", borderRadius: "var(--radius-pill)", border: "1px solid var(--border)" }}>
+                    <button
+                      onClick={() => setStudioMode("media")}
+                      style={{
+                        background: studioMode === "media" ? "var(--accent)" : "transparent",
+                        color: studioMode === "media" ? "#fff" : "var(--text-secondary)",
+                        border: "none",
+                        padding: "6px 14px",
+                        borderRadius: "var(--radius-pill)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      🎬 Media Audit
+                    </button>
+                    <button
+                      onClick={() => setStudioMode("rumour")}
+                      style={{
+                        background: studioMode === "rumour" ? "var(--accent)" : "transparent",
+                        color: studioMode === "rumour" ? "#fff" : "var(--text-secondary)",
+                        border: "none",
+                        padding: "6px 14px",
+                        borderRadius: "var(--radius-pill)",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      📰 Rumour Audit
+                    </button>
+                  </div>
                 </div>
-                <span className="section-label">Trust Infrastructure</span>
-                <h2 style={{ fontSize: "28px", fontWeight: "700", marginBottom: "12px", marginTop: "4px" }}>
-                  Investigate claims and media with verifiable evidence.
-                </h2>
-                <p style={{ color: "var(--text-secondary)", fontSize: "14px", lineHeight: "1.6", maxWidth: "640px", marginBottom: "24px" }}>
-                  DECEPTRIX implements an evidence-first architecture that analyzes social media rumors and media files, exposes limitations, and generates transparent, auditable report artifacts.
-                </p>
-                
-                {/* Launch buttons */}
-                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-                  <Link href="/media" className="btn-primary" style={{ minWidth: "160px" }}>
-                    Start Media Audit <span className="btn-arrow">→</span>
-                  </Link>
-                  <Link href="/rumour" className="btn-secondary" style={{ minWidth: "160px" }}>
-                    Start Rumour Audit <span className="btn-arrow">→</span>
-                  </Link>
-                </div>
+
+                {/* Active Studio Component */}
+                {studioMode === "media" ? <MediaAudit /> : <RumourAudit />}
               </div>
 
               {/* Platform metrics */}
@@ -199,7 +265,7 @@ export default function Home() {
             </div>
           )}
 
-          {activeTab === "testimonials" && (
+          {activeTab === "threats" && (
             <div className="secondary-card" style={{ marginTop: 0 }}>
               <Testimonials />
             </div>

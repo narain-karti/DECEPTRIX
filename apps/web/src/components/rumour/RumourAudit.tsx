@@ -150,16 +150,26 @@ export default function RumourAudit() {
           />
           <div className="text-input-footer">
             <span className="char-count">{text.length} / 2000</span>
-            <button
-              className="btn-ghost"
-              onClick={() => setText(DEMO_TEXT)}
-            >
-              Load demo claim →
-            </button>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: "12px", color: "var(--accent)" }}
+                onClick={() => setText(DEMO_TEXT)}
+              >
+                Preset 1: Banking Aadhaar Rule →
+              </button>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: "12px" }}
+                onClick={() => setText("BREAKING: RBI has cancelled all paper currency notes starting next month. Digital Rupee (e-Rupee) will be the only legal tender in India.")}
+              >
+                Preset 2: Currency Ban →
+              </button>
+            </div>
           </div>
         </div>
 
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, display: "flex", gap: "12px", alignItems: "center" }}>
           <button
             className="btn-primary"
             onClick={startAudit}
@@ -168,12 +178,16 @@ export default function RumourAudit() {
           >
             Extract & Audit Claims <span className="btn-arrow">→</span>
           </button>
+          {text && (
+            <button className="btn-secondary" onClick={() => setText("")}>
+              Clear
+            </button>
+          )}
         </div>
 
         <div style={{ marginTop: 24 }}>
           <p className="caption">
-            ⚠️ Do not paste personal or sensitive information. DECEPTRIX connects
-            to live search engines and NLI entailment models to cross-reference claims against authoritative sources.
+            🔒 DECEPTRIX connects to DuckDuckGo live discovery and facebook/bart-large-mnli zero-shot classification to cross-examine claims across 4 source authority tiers.
           </p>
         </div>
       </div>
