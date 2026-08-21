@@ -466,8 +466,10 @@ def process_media_job(job_id: str):
             vit_med = float(np.median(all_deepfake_scores))
             vit_q75 = float(np.percentile(all_deepfake_scores, 75)) if len(all_deepfake_scores) >= 4 else max(all_deepfake_scores)
             deepfake_primary = (vit_med * 0.60) + (vit_q75 * 0.40)
+            deepfake_max = max(all_deepfake_scores)
         else:
             deepfake_primary = 0.0
+            deepfake_max = 0.0
 
         jitter_max = max([f.get("jitter_score", 0.0) for ev in frame_events for ref in (ev.artifact_refs or []) for f in (ref.get("faces") or [])] + [0.0])
         lip_sync_val = max([e.score_or_null for e in frame_events if e.type == "lip_sync_analysis"] + [0.0])
@@ -500,12 +502,6 @@ def process_media_job(job_id: str):
 
         final_score = float(max(0.0, min(1.0, final_score)))
 
-        verdict = "Likely Real"
-        if final_score >= 0.65 or deepfake_primary >= 0.80:
-            verdict = "Likely Manipulated"
-        elif final_score >= 0.40:
-            verdict = "Suspicious"
-
         job.progress = 100
         job.status = "completed"
         job.current_step = "Analysis complete."
@@ -524,7 +520,7 @@ def process_media_job(job_id: str):
                 "metadata": 0.10
             },
             "signal_scores": {
-                "deepfake_classifier": float(deepfake_max),
+                "deepfake_classifier": float(deepfake_primary),
                 "lip_sync": float(lip_sync_val),
                 "jitter": float(jitter_max),
                 "frequency": float(freq_max),
