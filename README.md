@@ -17,37 +17,36 @@ While legacy deepfake detectors act as "black boxes" that return arbitrary perce
 
 DECEPTRIX is built on a decoupled, highly scalable engine architecture, ensuring that visual, audio, temporal, and frequency models execute in complete isolation before their evidence is fused.
 
-```text
-                                  [ RAW MEDIA INTAKE ]
-                                            │
-                                ┌───────────┴───────────┐
-                                │   SHA-256 Fingerprint │
-                                └───────────┬───────────┘
-                                            ▼
-                    [ FFmpeg Dense 15 FPS Demux & 16 kHz PCM Audio ]
-                                            │
-         ┌──────────────────┬───────────────┼───────────────┬──────────────────┐
-         ▼                  ▼               ▼               ▼                  ▼
-┌──────────────────┐┌──────────────┐┌──────────────┐┌──────────────┐┌──────────────────┐
-│ Primary Visual   ││ Lip-Sync     ││ 468-pt Mesh  ││ 2D-DCT Sub-  ││ FFprobe Container│
-│ Deepfake Detector││ MAR vs. RMS  ││ Face Jitter  ││ Pixel FFT    ││ & Stream Metadata│
-│ (ViT + Ensemble) ││ Correlation  ││ Spatial Var. ││ Energy       ││ Anomaly Scanning │
-│ Weight: ~35%     ││ Weight: ~30% ││ Weight: ~25% ││ Weight: ~20% ││ Weight: ~10%     │
-└────────┬─────────┘└──────┬───────┘└──────┬───────┘└──────┬───────┘└────────┬─────────┘
-         │                 │               │               │                 │
-         │         [ Laplacian Blur Penalty Calibrator ]   │                 │
-         │                 │               │               │                 │
-         └─────────────────┴───────┬───────┴───────────────┴─────────────────┘
-                                   ▼
-                   [ BAYESIAN EVIDENTIARY FUSION ENGINE ]
-                                   │
-              ┌────────────────────┴────────────────────┐
-              ▼                                         ▼
-   [ Interactive Web Studio ]               [ 5-Page Forensic Dossier ]
-  • Live Extracted Face HUD                 • Executive Threat Panel
-  • Audio-Visual Oscilloscope               • Signal Consensus Radar
-  • 2D-DCT Spectral Scope                   • Biometric Keyframe Cards
-  • Lightbox Face Inspector                 • Cryptographic Attestation
+```mermaid
+graph TD
+    %% Styling
+    classDef intake fill:#1a1b26,stroke:#7aa2f7,stroke-width:2px,color:#c0caf5
+    classDef process fill:#24283b,stroke:#bb9af7,stroke-width:2px,color:#c0caf5
+    classDef engine fill:#1f2335,stroke:#ff9e64,stroke-width:2px,color:#c0caf5
+    classDef penalty fill:#414868,stroke:#f7768e,stroke-width:2px,color:#c0caf5
+    classDef fusion fill:#24283b,stroke:#7dcfff,stroke-width:3px,color:#c0caf5
+    classDef output fill:#1a1b26,stroke:#9ece6a,stroke-width:2px,color:#c0caf5
+
+    %% Nodes
+    A[Raw Media Intake]:::intake --> B[SHA-256 Fingerprint]:::process
+    B --> C[FFmpeg Dense 15 FPS Demux & 16 kHz PCM Audio]:::process
+    
+    C --> D1[Primary Visual Deepfake Detector<br/>ViT + Ensemble<br/>Weight: ~35%]:::engine
+    C --> D2[Lip-Sync<br/>MAR vs. RMS Correlation<br/>Weight: ~30%]:::engine
+    C --> D3[468-pt Mesh Face Jitter<br/>Spatial Variance<br/>Weight: ~25%]:::engine
+    C --> D4[2D-DCT Sub-Pixel<br/>FFT Energy<br/>Weight: ~20%]:::engine
+    C --> D5[FFprobe Container &<br/>Stream Metadata Scanning<br/>Weight: ~10%]:::engine
+
+    D1 --> E[Laplacian Blur Penalty Calibrator]:::penalty
+    D2 --> E
+    D3 --> E
+    D4 --> E
+    D5 --> E
+
+    E --> F{Bayesian Evidentiary Fusion Engine}:::fusion
+
+    F --> G1[Interactive Web Studio<br/>• Live Extracted Face HUD<br/>• 2D-DCT Spectral Scope]:::output
+    F --> G2[5-Page Forensic Dossier<br/>• Signal Consensus Radar<br/>• Cryptographic Attestation]:::output
 ```
 
 ### 1. Data Ingestion & Demuxing
