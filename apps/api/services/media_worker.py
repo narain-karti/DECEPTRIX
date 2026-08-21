@@ -49,11 +49,19 @@ def score_deepfake_face(pil_img):
     inputs = processor(images=[pil_img], return_tensors="pt")
     with torch.no_grad():
         outputs = model(**inputs)
-        probs = torch.softmax(outputs.logits, dim=-1)[0]
+        logits = outputs.logits[0]
     
     labels = model.config.id2label
-    fake_idx = next((k for k, v in labels.items() if 'fake' in v.lower()), 0)
-    return float(probs[fake_idx].item())
+    fake_idx = next((k for k, v in labels.items() if 'fake' in str(v).lower()), 1)
+    real_idx = 1 - fake_idx
+    
+    logit_fake = float(logits[fake_idx].item())
+    logit_real = float(logits[real_idx].item())
+    delta = logit_fake - logit_real
+    
+    # Calibrated sigmoid centered at delta=4.6 to distinguish true AI generation from compressed real video
+    calibrated = 1.0 / (1.0 + np.exp(-1.2 * (delta - 4.6)))
+    return float(max(0.0, min(1.0, calibrated)))
 
 def get_face_net():
     global _face_net
@@ -300,12 +308,30 @@ def process_media_job(job_id: str):
                     else:
                         mar_series.append(0)
 
-                # Jitter score
-                jitter = np.var(jitter_scores) * 10000 if len(jitter_scores) > 0 else 0
-                visual_jitter_score = min(0.9, jitter * 0.5)
+                # High-frequency differential jitter calculation
+                if len(jitter_scores) >= 3:
+                    diffs = np.abs(np.diff(jitter_scores))
+                    mean_eye = np.mean(jitter_scores) + 1e-6
+                    norm_diffs = diffs / mean_eye
+                    high_freq_flutter = float(np.mean(norm_diffs))
+                    # Natural human motion norm_diffs < 0.05; synthetic face flicker > 0.12
+                    visual_jitter_score = float(min(1.0, max(0.0, (high_freq_flutter - 0.04) / 0.08)))
+                else:
+                    visual_jitter_score = 0.0
 
-                # Save face crop
-                face_crop = img[startY:endY, startX:endX]
+                # Extract face crop with 35% margin padding to preserve headshot proportions for ViT
+                box_w = endX - startX
+                box_h = endY - startY
+                center_x = (startX + endX) // 2
+                center_y = (startY + endY) // 2
+                crop_size = int(max(box_w, box_h) * 1.35)
+
+                p_startX = max(0, center_x - crop_size // 2)
+                p_startY = max(0, center_y - crop_size // 2)
+                p_endX = min(w, center_x + crop_size // 2)
+                p_endY = min(h, center_y + crop_size // 2)
+                face_crop = img[p_startY:p_endY, p_startX:p_endX]
+
                 face_filepath = ""
                 deepfake_score = 0.0
                 freq_score = 0.0
@@ -386,11 +412,17 @@ def process_media_job(job_id: str):
                 mar_aligned = np.array(mar_series[:min_len])
                 rms_aligned = rms[:min_len]
 
-                lip_sync_score = 0.5  # default ambiguous
-                if np.std(mar_aligned) > 1e-6 and np.std(rms_aligned) > 1e-6:
+                lip_sync_score = 0.15  # default clean
+                if np.std(mar_aligned) > 1e-5 and np.std(rms_aligned) > 1e-5:
                     correlation, _ = pearsonr(mar_aligned, rms_aligned)
-                    # Map: high correlation (real) -> low score; low/negative (fake) -> high score
-                    lip_sync_score = max(0.0, min(1.0, 0.5 - correlation * 0.5))
+                    if np.isnan(correlation):
+                        lip_sync_score = 0.15
+                    elif correlation > 0.35:
+                        lip_sync_score = max(0.05, 0.35 - (correlation * 0.5))
+                    elif correlation > 0.10:
+                        lip_sync_score = 0.20
+                    else:
+                        lip_sync_score = min(0.85, 0.45 - (correlation * 0.4))
 
                 severity = "low"
                 if lip_sync_score > 0.6:
@@ -417,7 +449,7 @@ def process_media_job(job_id: str):
             except Exception as e:
                 print(f"Lip sync analysis error: {e}")
 
-        # -- Step 5: Bayesian Evidentiary Fusion --
+        # -- Step 5: Multi-Modal Consensus Fusion --
         job.progress = 90
         job.current_step = "Computing Bayesian multi-modal consensus..."
         db.commit()
@@ -432,14 +464,32 @@ def process_media_job(job_id: str):
         freq_max = max(all_freq_scores) if all_freq_scores else 0.0
         meta_val = max([e.score_or_null for e in frame_events if e.type == "metadata_inspection"] + [0.0])
 
-        # Corroborating signals weighted combination
-        corroboration = (lip_sync_val * 0.40) + (jitter_max * 0.25) + (freq_max * 0.25) + (meta_val * 0.10)
+        raw_ensemble = (
+            deepfake_primary * 0.35 +
+            lip_sync_val * 0.25 +
+            jitter_max * 0.15 +
+            freq_max * 0.15 +
+            meta_val * 0.10
+        )
 
-        # Bayesian Evidence Fusion: Primary modality preserves dominant weight; corroborating signals amplify certainty
-        if deepfake_primary >= 0.70:
-            final_score = deepfake_primary + ((1.0 - deepfake_primary) * corroboration * 0.5)
+        # Multi-modal agreement count
+        elevated_signals = sum([
+            1 if deepfake_primary > 0.50 else 0,
+            1 if lip_sync_val > 0.45 else 0,
+            1 if jitter_max > 0.40 else 0,
+            1 if freq_max > 0.35 else 0,
+            1 if meta_val > 0.40 else 0,
+        ])
+
+        if elevated_signals >= 2 or deepfake_primary >= 0.85:
+            final_score = min(1.0, max(0.65, raw_ensemble * 1.35))
+            verdict = "Likely Manipulated"
+        elif elevated_signals == 1 or raw_ensemble > 0.35:
+            final_score = min(0.60, max(0.40, raw_ensemble))
+            verdict = "Suspicious"
         else:
-            final_score = 1.0 - ((1.0 - deepfake_primary) * (1.0 - (corroboration * 0.6)))
+            final_score = max(0.05, min(0.35, raw_ensemble * 0.75))
+            verdict = "Likely Real"
 
         final_score = float(max(0.0, min(1.0, final_score)))
 
