@@ -27,14 +27,33 @@ mp_face_mesh = mp.solutions.face_mesh
 # --- Lazy-loaded models ---
 
 _deepfake_detector = None
+from transformers import AutoImageProcessor, AutoModelForImageClassification
+import torch
+
+_vit_processor = None
+_vit_model = None
 _face_net = None
 
 def get_deepfake_detector():
-    global _deepfake_detector
-    if _deepfake_detector is None:
-        print("Loading ViT Deepfake Classifier...")
-        _deepfake_detector = pipeline('image-classification', model='dima806/deepfake_vs_real_image_detection')
-    return _deepfake_detector
+    global _vit_processor, _vit_model
+    if _vit_model is None:
+        print("Loading ViT Deepfake Classifier (dima806)...")
+        model_name = "dima806/deepfake_vs_real_image_detection"
+        _vit_processor = AutoImageProcessor.from_pretrained(model_name)
+        _vit_model = AutoModelForImageClassification.from_pretrained(model_name)
+        _vit_model.eval()
+    return _vit_processor, _vit_model
+
+def score_deepfake_face(pil_img):
+    processor, model = get_deepfake_detector()
+    inputs = processor(images=[pil_img], return_tensors="pt")
+    with torch.no_grad():
+        outputs = model(**inputs)
+        probs = torch.softmax(outputs.logits, dim=-1)[0]
+    
+    labels = model.config.id2label
+    fake_idx = next((k for k, v in labels.items() if 'fake' in v.lower()), 0)
+    return float(probs[fake_idx].item())
 
 def get_face_net():
     global _face_net
@@ -295,8 +314,7 @@ def process_media_job(job_id: str):
                     # Deepfake classifier (ViT)
                     try:
                         pil_face = Image.fromarray(cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB))
-                        df_result = deepfake_detector(pil_face)
-                        deepfake_score = next((r['score'] for r in df_result if r['label'].lower() == 'fake'), 0.0)
+                        deepfake_score = score_deepfake_face(pil_face)
                         all_deepfake_scores.append(deepfake_score)
                     except Exception as e:
                         print(f"Deepfake classifier error: {e}")
