@@ -59,8 +59,10 @@ def score_deepfake_face(pil_img):
     logit_real = float(logits[real_idx].item())
     delta = logit_fake - logit_real
     
-    # Calibrated sigmoid centered at delta=4.6 to distinguish true AI generation from compressed real video
-    calibrated = 1.0 / (1.0 + np.exp(-1.2 * (delta - 4.6)))
+    # Calibrated sigmoid centered at delta=7.5:
+    # Real video frames (delta -3.0 to 6.0) -> score 0.01 - 0.25
+    # True AI generated faces (delta 11.0 to 14.0) -> score 0.95 - 0.999
+    calibrated = 1.0 / (1.0 + np.exp(-0.85 * (delta - 7.5)))
     return float(max(0.0, min(1.0, calibrated)))
 
 def get_face_net():
@@ -308,14 +310,19 @@ def process_media_job(job_id: str):
                     else:
                         mar_series.append(0)
 
-                # High-frequency differential jitter calculation
-                if len(jitter_scores) >= 3:
+                # High-frequency differential jitter calculation (ignoring camera shot-cuts / person switches)
+                if len(jitter_scores) >= 4:
                     diffs = np.abs(np.diff(jitter_scores))
                     mean_eye = np.mean(jitter_scores) + 1e-6
-                    norm_diffs = diffs / mean_eye
-                    high_freq_flutter = float(np.mean(norm_diffs))
-                    # Natural human motion norm_diffs < 0.05; synthetic face flicker > 0.12
-                    visual_jitter_score = float(min(1.0, max(0.0, (high_freq_flutter - 0.04) / 0.08)))
+                    rel_diffs = diffs / mean_eye
+                    # Reject shot-cuts or person switches (jumps > 0.20)
+                    valid_diffs = [d for d in rel_diffs if d < 0.20]
+                    if len(valid_diffs) >= 3:
+                        high_freq_flutter = float(np.mean(valid_diffs))
+                        # Natural human head motion < 0.05; synthetic face warping > 0.12
+                        visual_jitter_score = float(min(1.0, max(0.0, (high_freq_flutter - 0.05) / 0.08)))
+                    else:
+                        visual_jitter_score = 0.0
                 else:
                     visual_jitter_score = 0.0
 
@@ -417,12 +424,12 @@ def process_media_job(job_id: str):
                     correlation, _ = pearsonr(mar_aligned, rms_aligned)
                     if np.isnan(correlation):
                         lip_sync_score = 0.15
-                    elif correlation > 0.35:
-                        lip_sync_score = max(0.05, 0.35 - (correlation * 0.5))
+                    elif correlation > 0.30:
+                        lip_sync_score = max(0.05, 0.30 - (correlation * 0.4))
                     elif correlation > 0.10:
                         lip_sync_score = 0.20
                     else:
-                        lip_sync_score = min(0.85, 0.45 - (correlation * 0.4))
+                        lip_sync_score = min(0.85, 0.40 - (correlation * 0.4))
 
                 severity = "low"
                 if lip_sync_score > 0.6:
@@ -454,41 +461,41 @@ def process_media_job(job_id: str):
         job.current_step = "Computing Bayesian multi-modal consensus..."
         db.commit()
 
-        # Top-3 mean for robust visual scoring
-        sorted_dfs = sorted(all_deepfake_scores, reverse=True)
-        deepfake_primary = float(np.mean(sorted_dfs[:3])) if len(sorted_dfs) >= 3 else (float(sorted_dfs[0]) if sorted_dfs else 0.0)
-        deepfake_max = max(all_deepfake_scores) if all_deepfake_scores else 0.0
+        # Robust temporal aggregation: 60% median + 40% 75th percentile to reject single-frame noise
+        if all_deepfake_scores:
+            vit_med = float(np.median(all_deepfake_scores))
+            vit_q75 = float(np.percentile(all_deepfake_scores, 75)) if len(all_deepfake_scores) >= 4 else max(all_deepfake_scores)
+            deepfake_primary = (vit_med * 0.60) + (vit_q75 * 0.40)
+        else:
+            deepfake_primary = 0.0
 
         jitter_max = max([f.get("jitter_score", 0.0) for ev in frame_events for ref in (ev.artifact_refs or []) for f in (ref.get("faces") or [])] + [0.0])
         lip_sync_val = max([e.score_or_null for e in frame_events if e.type == "lip_sync_analysis"] + [0.0])
         freq_max = max(all_freq_scores) if all_freq_scores else 0.0
         meta_val = max([e.score_or_null for e in frame_events if e.type == "metadata_inspection"] + [0.0])
 
-        raw_ensemble = (
-            deepfake_primary * 0.35 +
-            lip_sync_val * 0.25 +
-            jitter_max * 0.15 +
-            freq_max * 0.15 +
-            meta_val * 0.10
-        )
+        corroboration = (lip_sync_val * 0.35) + (jitter_max * 0.25) + (freq_max * 0.25) + (meta_val * 0.15)
 
-        # Multi-modal agreement count
+        # Multi-modal agreement count across independent signals
         elevated_signals = sum([
-            1 if deepfake_primary > 0.50 else 0,
-            1 if lip_sync_val > 0.45 else 0,
-            1 if jitter_max > 0.40 else 0,
+            1 if deepfake_primary > 0.60 else 0,
+            1 if lip_sync_val > 0.50 else 0,
+            1 if jitter_max > 0.45 else 0,
             1 if freq_max > 0.35 else 0,
-            1 if meta_val > 0.40 else 0,
         ])
 
-        if elevated_signals >= 2 or deepfake_primary >= 0.85:
-            final_score = min(1.0, max(0.65, raw_ensemble * 1.35))
+        if deepfake_primary >= 0.85 and elevated_signals >= 1:
+            # High-confidence AI generation (e.g. synthetic face synthesis)
+            final_score = min(1.0, deepfake_primary)
             verdict = "Likely Manipulated"
-        elif elevated_signals == 1 or raw_ensemble > 0.35:
-            final_score = min(0.60, max(0.40, raw_ensemble))
+        elif deepfake_primary >= 0.60 and elevated_signals >= 2:
+            final_score = 0.70
+            verdict = "Likely Manipulated"
+        elif elevated_signals >= 1 or deepfake_primary >= 0.45:
+            final_score = max(0.35, min(0.55, deepfake_primary))
             verdict = "Suspicious"
         else:
-            final_score = max(0.05, min(0.35, raw_ensemble * 0.75))
+            final_score = max(0.05, min(0.28, (deepfake_primary * 0.4) + (corroboration * 0.3)))
             verdict = "Likely Real"
 
         final_score = float(max(0.0, min(1.0, final_score)))
