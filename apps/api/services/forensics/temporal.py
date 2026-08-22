@@ -85,6 +85,13 @@ class TemporalForensicsEngine:
         if valid_mask.sum() < 10:
             return None
 
+        # ── Frozen-face check (puppet/static-photo tell) ────────────
+        # After pose+scale normalization a LIVE face still exhibits
+        # non-rigid micro-motion. Near-zero median step across the whole
+        # mesh means the "face" is a rigidly moved static image.
+        if global_step < ForensicConfig.JITTER_FROZEN_FLOOR:
+            return float(ForensicConfig.JITTER_FROZEN_SCORE)
+
         region_scores: Dict[str, float] = {}
         for region_name, idxs in REGIONS.items():
             idxs = [i for i in idxs if i < arr.shape[1]]

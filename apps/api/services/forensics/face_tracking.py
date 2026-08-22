@@ -261,16 +261,22 @@ class MultiFaceTracker:
         self._next_id = 0
 
 
+def _lm(landmarks):
+    """Get the actual landmark list from either NormalizedLandmarkList or raw list."""
+    return getattr(landmarks, "landmark", landmarks)
+
+
 def extract_eye_centers(landmarks, width: int, height: int) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     """Return sub-pixel left/right eye centres in pixel coords."""
     try:
-        n_lm = len(landmarks)
+        lm = _lm(landmarks)
+        n_lm = len(lm)
         if n_lm > LM_RIGHT_IRIS:
-            l = landmarks[LM_LEFT_IRIS]
-            r = landmarks[LM_RIGHT_IRIS]
+            l = lm[LM_LEFT_IRIS]
+            r = lm[LM_RIGHT_IRIS]
         elif n_lm > LM_RIGHT_EYE_OUTER:
-            l = landmarks[LM_LEFT_EYE_OUTER]
-            r = landmarks[LM_RIGHT_EYE_OUTER]
+            l = lm[LM_LEFT_EYE_OUTER]
+            r = lm[LM_RIGHT_EYE_OUTER]
         else:
             return None
         left = np.array([l.x * width, l.y * height], dtype=np.float32)
@@ -283,10 +289,11 @@ def extract_eye_centers(landmarks, width: int, height: int) -> Optional[Tuple[np
 def compute_mar(landmarks) -> Optional[float]:
     """Mouth Aspect Ratio: vertical gap / horizontal width of inner lips."""
     try:
-        top = np.array([landmarks[LM_TOP_LIP_INNER].x, landmarks[LM_TOP_LIP_INNER].y])
-        bottom = np.array([landmarks[LM_BOTTOM_LIP_INNER].x, landmarks[LM_BOTTOM_LIP_INNER].y])
-        left = np.array([landmarks[LM_LEFT_LIP_CORNER].x, landmarks[LM_LEFT_LIP_CORNER].y])
-        right = np.array([landmarks[LM_RIGHT_LIP_CORNER].x, landmarks[LM_RIGHT_LIP_CORNER].y])
+        lm = _lm(landmarks)
+        top = np.array([lm[LM_TOP_LIP_INNER].x, lm[LM_TOP_LIP_INNER].y])
+        bottom = np.array([lm[LM_BOTTOM_LIP_INNER].x, lm[LM_BOTTOM_LIP_INNER].y])
+        left = np.array([lm[LM_LEFT_LIP_CORNER].x, lm[LM_LEFT_LIP_CORNER].y])
+        right = np.array([lm[LM_RIGHT_LIP_CORNER].x, lm[LM_RIGHT_LIP_CORNER].y])
         return float(np.linalg.norm(top - bottom) / (np.linalg.norm(left - right) + 1e-6))
     except Exception:
         return None
@@ -294,7 +301,8 @@ def compute_mar(landmarks) -> Optional[float]:
 
 def landmarks_to_array(landmarks) -> np.ndarray:
     """Convert mediapipe landmark list into an (N, 2) float array."""
-    return np.array([[p.x, p.y] for p in landmarks], dtype=np.float32)
+    lm = _lm(landmarks)
+    return np.array([[p.x, p.y] for p in lm], dtype=np.float32)
 
 
 def preprocess_face_for_model(

@@ -108,6 +108,12 @@ class ForensicConfig:
     JITTER_SHOT_CUT: float = _env_float("JITTER_SHOT_CUT", 0.20)   # reject jumps above
     JITTER_NATURAL: float = _env_float("JITTER_NATURAL", 0.006)    # natural micro-motion floor
     JITTER_SYNTHETIC: float = _env_float("JITTER_SYNTHETIC", 0.028)  # synthetic warp ceiling
+    # Frozen-face detection: real faces NEVER hold perfectly rigid geometry
+    # (pulse-driven skin deformation + muscle tremor persist even in tripod
+    # shots). A pasted static photo moved by affine zoom/pan shows ~zero
+    # relative landmark motion after pose/scale normalization => puppet tell.
+    JITTER_FROZEN_FLOOR: float = _env_float("JITTER_FROZEN_FLOOR", 0.0016)
+    JITTER_FROZEN_SCORE: float = _env_float("JITTER_FROZEN_SCORE", 0.80)
 
     # ── Frequency engine ────────────────────────────────────────
     DCT_SIZE: int = _env_int("DCT_SIZE", 128)
