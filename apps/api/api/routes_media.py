@@ -13,43 +13,53 @@ from services.media_worker import process_media_job
 
 router = APIRouter()
 
-ALLOWED_TYPES = {"video/mp4", "video/webm", "video/quicktime"}
+ALLOWED_TYPES = {"video/mp4", "video/webm", "video/quicktime", "application/octet-stream"}
 ALLOWED_EXTS = {".mp4", ".webm", ".mov"}
 MAX_SIZE_BYTES = 200 * 1024 * 1024  # 200 MB
+
+
+def _validate_file(file: UploadFile) -> str:
+    """Validate content type + extension; return normalized extension."""
+    _, ext = os.path.splitext(file.filename or "")
+    ext = ext.lower()
+    if ext not in ALLOWED_EXTS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file extension: '{ext}'. Accepted: .mp4, .webm, .mov")
+    # Some browsers send generic octet-stream; extension is the stricter check.
+    if file.content_type and file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Accepted: MP4, WebM, MOV.")
+    return ext
+
 
 @router.post("/jobs", response_model=MediaJobResponse)
 async def create_media_job(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    # Validate file type
-    if file.content_type not in ALLOWED_TYPES:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}. Accepted: MP4, WebM, MOV.")
-
-    # Validate extension
-    _, ext = os.path.splitext(file.filename or "")
-    ext = ext.lower()
-    if ext not in ALLOWED_EXTS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file extension: {ext}. Accepted: .mp4, .webm, .mov")
+    ext = _validate_file(file)
 
     job_id = str(uuid.uuid4())
-
-    # Save file with safe name (job_id + validated extension)
     safe_filename = f"{job_id}{ext}"
     file_path = os.path.join(settings.STORAGE_DIR, safe_filename)
 
     sha256_hash = hashlib.sha256()
-    with open(file_path, "wb") as buffer:
-        total_size = 0
-        while chunk := await file.read(65536):
-            total_size += len(chunk)
-            if total_size > MAX_SIZE_BYTES:
-                buffer.close()
-                os.remove(file_path)
-                raise HTTPException(status_code=400, detail=f"File too large. Maximum size: 200 MB.")
-            buffer.write(chunk)
-            sha256_hash.update(chunk)
+    try:
+        with open(file_path, "wb") as buffer:
+            total_size = 0
+            while chunk := await file.read(65536):
+                total_size += len(chunk)
+                if total_size > MAX_SIZE_BYTES:
+                    raise HTTPException(status_code=400, detail="File too large. Maximum size: 200 MB.")
+                buffer.write(chunk)
+                sha256_hash.update(chunk)
+    except HTTPException:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
+    except Exception as e:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=500, detail=f"Failed to persist upload: {e}")
 
     job = Job(
         id=job_id,
@@ -59,13 +69,12 @@ async def create_media_job(
         current_step="Initializing forensic extractors...",
         filename=file.filename,
         file_path=file_path,
-        sha256=sha256_hash.hexdigest()
+        sha256=sha256_hash.hexdigest(),
     )
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    # Launch ML worker truly asynchronously in background so POST returns immediately
     background_tasks.add_task(process_media_job, job_id)
 
     return MediaJobResponse(
@@ -74,15 +83,16 @@ async def create_media_job(
         progress=job.progress,
         filename=job.filename,
         sha256=job.sha256,
-        current_step=job.current_step
+        current_step=job.current_step,
     )
+
 
 @router.get("/jobs/{job_id}", response_model=MediaJobResponse)
 async def get_media_job(job_id: str, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     evidence_events = []
     if job.evidence:
         evidence_list: list = job.evidence  # type: ignore
@@ -96,20 +106,21 @@ async def get_media_job(job_id: str, db: Session = Depends(get_db)):
         sha256=job.sha256,
         current_step=job.current_step,
         evidence=evidence_events,
-        report_data=job.report_data
+        report_data=job.report_data,
     )
+
 
 @router.get("/jobs/{job_id}/result", response_model=MediaResultResponse)
 async def get_media_job_result(job_id: str, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job or job.status != "completed":
         raise HTTPException(status_code=404, detail="Result not ready or job not found")
-        
+
     evidence_events = []
     if job.evidence:
         evidence_list: list = job.evidence  # type: ignore
         evidence_events = [EvidenceEvent(**e) for e in evidence_list]
-        
+
     return MediaResultResponse(
         id=job.id,
         verdict=job.verdict,
@@ -117,6 +128,6 @@ async def get_media_job_result(job_id: str, db: Session = Depends(get_db)):
         report_data=job.report_data,
         report_links={
             "json": f"/api/v1/reports/{job.id}.json",
-            "pdf": f"/api/v1/reports/{job.id}.pdf"
-        }
+            "pdf": f"/api/v1/reports/{job.id}.pdf",
+        },
     )

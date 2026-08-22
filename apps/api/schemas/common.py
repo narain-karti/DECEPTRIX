@@ -3,6 +3,8 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class EvidenceEvent(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     event_id: str
     case_id: str
     modality: str
