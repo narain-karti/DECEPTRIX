@@ -650,9 +650,11 @@ export default function MediaAudit() {
   }
 
   /* ------ RESULTS STATE ------ */
-  const isManipulated = resultData?.verdict === "Likely Manipulated";
-  const isSuspicious = resultData?.verdict === "Suspicious";
-  const isReal = resultData?.verdict === "Likely Real";
+  const verdictRaw = (resultData?.verdict || "").toUpperCase();
+  const isManipulated = verdictRaw.includes("MANIPULATED");
+  const isSuspicious = verdictRaw.includes("SUSPICIOUS");
+  const isInconclusive = verdictRaw.includes("INCONCLUSIVE");
+  const isReal = verdictRaw.includes("AUTHENTIC") || verdictRaw === "LIKELY REAL";
 
   let verdictClass = "verdict-clean";
   let verdictIcon = "✅";
@@ -661,9 +663,9 @@ export default function MediaAudit() {
   if (isManipulated) {
     verdictClass = "verdict-warning";
     verdictIcon = "🚨";
-  } else if (isSuspicious) {
+  } else if (isSuspicious || isInconclusive) {
     verdictClass = "verdict-warning";
-    verdictIcon = "⚠️";
+    verdictIcon = isSuspicious ? "⚠️" : "❓";
   }
 
   // Find visual events and extract signals
@@ -681,28 +683,31 @@ export default function MediaAudit() {
   const metaVal = metaEvent?.score_or_null ?? 0.15;
 
   const rawSignalScores = resultData?.report_data?.signal_scores || {};
+  const pickScore = (key: string, fallback: number): number => {
+    const v = rawSignalScores[key];
+    return typeof v === 'number' && isFinite(v) ? v : fallback;
+  };
   const signalScores = {
-    deepfake_classifier: typeof rawSignalScores.deepfake_classifier === 'number' && rawSignalScores.deepfake_classifier > 0 ? rawSignalScores.deepfake_classifier : maxFake,
-    lip_sync: typeof rawSignalScores.lip_sync === 'number' && rawSignalScores.lip_sync > 0 ? rawSignalScores.lip_sync : lipSyncVal,
-    jitter: typeof rawSignalScores.jitter === 'number' && rawSignalScores.jitter > 0 ? rawSignalScores.jitter : maxJitter,
-    frequency: typeof rawSignalScores.frequency === 'number' && rawSignalScores.frequency > 0 ? rawSignalScores.frequency : maxFreq,
-    metadata: typeof rawSignalScores.metadata === 'number' && rawSignalScores.metadata > 0 ? rawSignalScores.metadata : metaVal,
+    visual: pickScore('visual', maxFake),
+    deepfake_classifier: pickScore('visual', maxFake),
+    temporal: pickScore('temporal', maxJitter),
+    jitter: pickScore('temporal', maxJitter),
+    frequency: pickScore('frequency', maxFreq),
+    lip_sync: pickScore('lip_sync', lipSyncVal),
+    metadata: pickScore('metadata', metaVal),
   };
 
-  // Bayesian Evidence Fusion
-  const dfPrimary = signalScores.deepfake_classifier;
-  const corroboration = (signalScores.lip_sync * 0.40) + 
-                        (signalScores.jitter * 0.25) + 
-                        (signalScores.frequency * 0.25) + 
-                        (signalScores.metadata * 0.10);
+  // Prefer server-computed log-odds fused score; fall back to weighted display estimate
+  const corroboration = (signalScores.lip_sync * 0.30) +
+                        (signalScores.jitter * 0.25) +
+                        (signalScores.frequency * 0.25) +
+                        (signalScores.metadata * 0.20);
 
-  const calculatedFinal = dfPrimary >= 0.70
-    ? dfPrimary + ((1.0 - dfPrimary) * corroboration * 0.5)
-    : 1.0 - ((1.0 - dfPrimary) * (1.0 - (corroboration * 0.6)));
+  const fallbackEstimate = signalScores.visual * 0.55 + corroboration * 0.45;
 
-  const finalScore = typeof resultData?.report_data?.final_score === 'number' && resultData.report_data.final_score > 0
-    ? resultData.report_data.final_score
-    : Math.max(0.0, Math.min(1.0, calculatedFinal));
+  const finalScore = typeof resultData?.report_data?.final_score === 'number' && isFinite(resultData.report_data.final_score)
+    ? Math.max(0, Math.min(1, resultData.report_data.final_score))
+    : Math.max(0.0, Math.min(1.0, fallbackEstimate));
 
   return (
     <div>
@@ -726,11 +731,13 @@ export default function MediaAudit() {
             </div>
           </div>
           <div className="verdict-desc" style={{ marginTop: "4px" }}>
-            {isManipulated ? 
-              "Analysis found high-confidence synthetic artifacts exceeding detection thresholds across visual, frequency, and lip-sync modalities." :
-              isSuspicious ? 
-              "Analysis detected suspicious anomalies, but composite confidence is below the definitive manipulation threshold." :
-              "Analysis found no high-confidence manipulation artifacts. Minor compression artifacts are consistent with standard encoding."}
+            {isManipulated ?
+              "Multi-modal Bayesian consensus indicates synthetic generation or manipulation exceeding calibrated thresholds." :
+              isSuspicious ?
+              "Analysis detected anomalies across one or more modalities; confidence below the definitive manipulation threshold." :
+              isInconclusive ?
+              "Evidence was insufficient or contradictory for a definitive classification — manual review recommended." :
+              "No high-confidence synthetic signals detected across visual, temporal, spectral and audio-visual engines."}
           </div>
         </div>
       </div>
@@ -742,11 +749,11 @@ export default function MediaAudit() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {[
-            { label: "ViT Deepfake Classifier", weight: "35%", score: signalScores.deepfake_classifier ?? maxFake, icon: "🔬" },
-            { label: "Lip-Sync Audio-Visual Correlation", weight: "25%", score: signalScores.lip_sync ?? 0.0, icon: "👄" },
-            { label: "Facial Landmark Jitter Variance", weight: "15%", score: signalScores.jitter ?? 0.0, icon: "👁️" },
-            { label: "2D-DCT Spectral Frequency Anomaly", weight: "15%", score: signalScores.frequency ?? 0.0, icon: "⚡" },
-            { label: "Container & Codec Metadata Tag Check", weight: "10%", score: signalScores.metadata ?? 0.0, icon: "📋" },
+            { label: "ViT Deepfake Classifier", weight: "Primary", score: signalScores.deepfake_classifier ?? maxFake, icon: "🔬" },
+            { label: "Lip-Sync Audio-Visual Correlation", weight: "High", score: signalScores.lip_sync ?? 0.0, icon: "👄" },
+            { label: "Facial Landmark Jitter Variance", weight: "Medium", score: signalScores.jitter ?? 0.0, icon: "👁️" },
+            { label: "2D-DCT Spectral Frequency Anomaly", weight: "Medium", score: signalScores.frequency ?? 0.0, icon: "⚡" },
+            { label: "Container & Codec Metadata Tag Check", weight: "Low", score: signalScores.metadata ?? 0.0, icon: "📋" },
           ].map((sig, idx) => {
             const sc = typeof sig.score === 'number' ? sig.score : 0;
             const barColor = sc > 0.6 ? "#ff4a4a" : sc > 0.4 ? "#ffaa00" : "#00d68f";
@@ -756,7 +763,7 @@ export default function MediaAudit() {
                   <span style={{ color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "6px" }}>
                     <span>{sig.icon}</span>
                     <strong>{sig.label}</strong>
-                    <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>({sig.weight} weight)</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: "11px" }}>({sig.weight} Impact)</span>
                   </span>
                   <span style={{ color: barColor, fontWeight: 700, fontFamily: "monospace" }}>
                     {sc.toFixed(2)}

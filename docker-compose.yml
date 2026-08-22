@@ -7,23 +7,29 @@ services:
       - "6379:6379"
 
   api:
-    build: 
+    build:
       context: ./apps/api
     ports:
       - "8000:8000"
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_TASK_ALWAYS_EAGER=false
+      - ANALYSIS_FPS=15
+      - ATTESTATION_SECRET=${ATTESTATION_SECRET:-change-me-in-production}
     depends_on:
       - redis
     volumes:
       - ./apps/api/storage:/app/storage
 
   celery_worker:
-    build: 
+    build:
       context: ./apps/api
     command: celery -A core.celery_app worker --loglevel=info -c 2
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - ANALYSIS_FPS=15
+      - USE_TTA=true
+      - ATTESTATION_SECRET=${ATTESTATION_SECRET:-change-me-in-production}
     depends_on:
       - redis
     volumes:

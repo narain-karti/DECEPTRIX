@@ -5,7 +5,12 @@ type FlowState = "input" | "processing" | "results" | "failed";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
-const DEMO_TEXT = `BREAKING: Government has announced that Aadhaar card will be mandatory for all bank transactions starting January 2027. RBI has issued circular. All accounts without Aadhaar will be frozen. Also, new digital rupee will replace cash completely by March 2027. Share with everyone before it's too late!`;
+const DEMO_TEXTS = {
+  aadhaar: `BREAKING: Government has announced that Aadhaar card will be mandatory for all bank transactions starting January 2027. RBI has issued circular. All accounts without Aadhaar will be frozen. Also, new digital rupee will replace cash completely by March 2027. Share with everyone before it's too late!`,
+  pib_factcheck: `PIB India has issued a fake circular claiming that all VPN services must be registered with the Ministry of Electronics by next month. Action will be taken against unregistered users. Forward this to all your contacts.`,
+  digital_rupee: `RBI has cancelled all paper currency notes starting next month. Digital Rupee (e-Rupee) will be the only legal tender in India. Old notes can be exchanged at banks until December 2024.`,
+  election_rumor: `New EC directive: All opinion polls are banned until after the Lok Sabha results are declared. Any pollster publishing data before that will face criminal charges.`,
+};
 
 interface Citation {
   url: string;
@@ -114,11 +119,11 @@ export default function RumourAudit() {
   const getTierLabel = (tier: number) => {
     switch (tier) {
       case 1:
-        return "T1 · Primary Authority";
+        return "T1 · Primary Authority (e.g. .gov.in, PIB, official)";
       case 2:
-        return "T2 · Official Fact-Check";
+        return "T2 · Official Fact-Check (e.g. FactCheck, BOOM, AltNews)";
       default:
-        return "T3 · Discovery";
+        return "T3 · Discovery (e.g. blogs, social media)";
     }
   };
 
@@ -154,16 +159,30 @@ export default function RumourAudit() {
               <button
                 className="btn-ghost"
                 style={{ fontSize: "12px", color: "var(--accent)" }}
-                onClick={() => setText(DEMO_TEXT)}
+                onClick={() => setText(DEMO_TEXTS.aadhaar)}
               >
-                Preset 1: Banking Aadhaar Rule →
+                Preset 1: Aadhaar-Mandate →
               </button>
               <button
                 className="btn-ghost"
                 style={{ fontSize: "12px" }}
-                onClick={() => setText("BREAKING: RBI has cancelled all paper currency notes starting next month. Digital Rupee (e-Rupee) will be the only legal tender in India.")}
+                onClick={() => setText(DEMO_TEXTS.pib_factcheck)}
               >
-                Preset 2: Currency Ban →
+                Preset 2: PIB Fake Circular →
+              </button>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: "12px" }}
+                onClick={() => setText(DEMO_TEXTS.digital_rupee)}
+              >
+                Preset 3: Digital Rupee →
+              </button>
+              <button
+                className="btn-ghost"
+                style={{ fontSize: "12px" }}
+                onClick={() => setText(DEMO_TEXTS.election_rumor)}
+              >
+                Preset 4: Election Rumour →
               </button>
             </div>
           </div>
@@ -187,7 +206,7 @@ export default function RumourAudit() {
 
         <div style={{ marginTop: 24 }}>
           <p className="caption">
-            🔒 DECEPTRIX connects to DuckDuckGo live discovery and facebook/bart-large-mnli zero-shot classification to cross-examine claims across 4 source authority tiers.
+            🔒 DECEPTRIX connects to DuckDuckGo live discovery and facebook/bart-large-mnli zero-shot classification to cross-examine claims across 3 source authority tiers, with India-specific domain weighting.
           </p>
         </div>
       </div>
