@@ -160,7 +160,7 @@ def draw_footer_bar(c, case_id, page_num, total_pages=5):
     
     c.setFont(FONT_REGULAR, 7.5)
     c.setFillColor(COLOR_MUTED_TEXT)
-    c.drawString(MARGIN_LEFT, 28, "DECEPTRIX v2.0  ·  Cryptographically Hashed Forensic Record  ·  SIH 2026")
+    c.drawString(MARGIN_LEFT, 28, "DECEPTRIX v2.0  ·  Cryptographically Hashed Forensic Record")
     
     c.setFont(FONT_MONO, 7.5)
     c.drawRightString(MARGIN_RIGHT, 28, f"Page {page_num} of {total_pages}")

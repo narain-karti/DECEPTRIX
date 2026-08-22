@@ -1,6 +1,6 @@
 # ⚡ DECEPTRIX — Explainable Multi-Modal AI Forensic Intelligence Platform
 
-> **Smart India Hackathon 2026 (SIH) | Problem Category: AI Forensics & Information Integrity**  
+> **Problem Category: AI Forensics & Information Integrity**  
 > *"Evidence Before Conclusions"* — Next-generation multi-modal deepfake detection and claim verification engine producing court-admissible forensic intelligence dossiers.
 
 ---
@@ -185,7 +185,6 @@ DECEPTRIX is built on the principle of **explainable diagnostics**. Algorithmic 
 
 ---
 
-## 👥 Contributors & SIH 2026 Team
+## 👥 Contributors
 
-Developed with precision for **Smart India Hackathon 2026**.  
 *Repository:* [https://github.com/narain-karti/DECEPTRIX](https://github.com/narain-karti/DECEPTRIX)

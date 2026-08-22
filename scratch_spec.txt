@@ -1,4 +1,4 @@
-SMART INDIA HACKATHON  |  2026
+DECEPTRIX  |  2026
 DECEPTRIX
 MVP Build Specification
 A five-day, four-person blueprint for an explainable media and rumour-audit prototype

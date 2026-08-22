@@ -122,7 +122,7 @@ class NumberedCanvas(canvas.Canvas):
         self.line(MARGIN_LEFT, 45, MARGIN_RIGHT, 45)
         self.setFont(FONT_REGULAR, 7.5)
         self.setFillColor(COLOR_MUTED_TEXT)
-        self.drawString(MARGIN_LEFT, 32, "DECEPTRIX v2.0  ·  Tamper-Evident Multi-Modal Forensic Record  ·  SIH 2026")
+        self.drawString(MARGIN_LEFT, 32, "DECEPTRIX v2.0  ·  Tamper-Evident Multi-Modal Forensic Record")
         
         page_num_str = f"Page {self._pageNumber} of {page_count}"
         self.setFont(FONT_MONO, 7.5)

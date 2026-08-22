@@ -81,7 +81,7 @@ export default function Home() {
         <div style={{ maxWidth: "780px" }}>
           <div className="pill-outline" style={{ border: "1px solid rgba(255, 90, 36, 0.3)", backgroundColor: "rgba(255, 90, 36, 0.08)", color: "var(--accent)", marginBottom: "16px", display: "inline-flex", alignItems: "center", gap: "8px" }}>
             <span style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: "var(--accent)" }} />
-            EXPLAINABLE FORENSIC INFRASTRUCTURE · SIH 2026
+            EXPLAINABLE FORENSIC INFRASTRUCTURE
           </div>
 
           <h1 style={{ fontSize: "36px", fontWeight: "800", lineHeight: "1.2", marginBottom: "14px", color: "var(--text-primary)" }}>

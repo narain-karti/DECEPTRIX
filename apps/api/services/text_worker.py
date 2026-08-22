@@ -85,7 +85,8 @@ def process_text_audit(job_id: str):
 
                 results = []
                 try:
-                    for r in ddgs.text(claim, max_results=3):
+                    import itertools
+                    for r in itertools.islice(ddgs.text(claim), 3):
                         results.append(r)
                 except Exception as e:
                     print(f"DDGS error: {e}")
